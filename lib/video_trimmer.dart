@@ -34,17 +34,28 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
   @override
   void didUpdateWidget(VideoTrimSeekBar oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (widget.duration != oldWidget.duration) {
+      _isInitialized = false; // Allow re-initialization when duration changes
+      _initializeValues();
+    }
+
     if (widget.position != oldWidget.position) {
       setState(() {
         _position = widget.position.inSeconds.toDouble();
       });
     }
   }
+  
+  bool _isInitialized = false;
 
   void _initializeValues() {
-    _handleLeft = 0.2 * widget.duration.inSeconds; // Example initial left handle position (20%)
-    _handleRight = 0.8 * widget.duration.inSeconds; // Example initial right handle position (80%)
-    _position = widget.position.inSeconds.toDouble();
+    if (!_isInitialized) {
+      _handleLeft = 0.2 * widget.duration.inSeconds; // 20% of total duration
+      _handleRight = 0.8 * widget.duration.inSeconds; // 80% of total duration
+      _position = widget.position.inSeconds.toDouble();
+      _isInitialized = true; // Prevent re-initialization
+    }
   }
 
   void _onPositionChangeDebounced(Duration newDuration) {
@@ -62,33 +73,36 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth * 0.9; // Add some margin for cleaner look
         final margin = constraints.maxWidth * 0.05;
 
         return SizedBox(
-          height: 70, // Increased height for better visuals
+          height: 50, // Reduced height for better visuals
           child: Stack(
             alignment: Alignment.centerLeft,
             children: [
               // Yellow highlighted area
               Positioned(
-                top: 20,
+                top: 15,
                 left: margin + (_handleLeft / widget.duration.inSeconds) * width,
                 right: margin + ((widget.duration.inSeconds - _handleRight) / widget.duration.inSeconds) * width,
                 child: Container(
-                  height: 30,
+                  height: 20,
                   decoration: BoxDecoration(
-                    color: Colors.yellow,
-                    borderRadius: BorderRadius.circular(15),
+                    color: isDarkMode ? Colors.yellow[700] : Colors.yellow,
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
               ),
 
               // Seek bar background (black bar with rounded edges)
               Positioned(
-                top: 30,
+                top: 22.5, // Adjusted to vertically center the seek bar
                 left: margin,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -114,10 +128,10 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     });
                   },
                   child: Container(
-                    height: 10,
+                    height: 5,
                     width: width,
                     decoration: BoxDecoration(
-                      color: Colors.black,
+                      color: isDarkMode ? Colors.grey[800] : Colors.black,
                       borderRadius: BorderRadius.circular(5),
                     ),
                   ),
@@ -126,7 +140,8 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
 
               // Left handle (green)
               Positioned(
-                left: margin + (_handleLeft / widget.duration.inSeconds) * width - 15,
+                top: 10, // Adjusted to vertically center the handle
+                left: margin + (_handleLeft / widget.duration.inSeconds) * width - 10,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
                     setState(() {
@@ -136,10 +151,10 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     });
                   },
                   child: Container(
-                    height: 40,
-                    width: 30,
+                    height: 30,
+                    width: 20,
                     decoration: BoxDecoration(
-                      color: Colors.green,
+                      color: isDarkMode ? Colors.green[700] : Colors.green,
                       borderRadius: BorderRadius.circular(5),
                     ),
                   ),
@@ -148,7 +163,8 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
 
               // Right handle (green)
               Positioned(
-                left: margin + (_handleRight / widget.duration.inSeconds) * width - 15,
+                top: 10, // Adjusted to vertically center the handle
+                left: margin + (_handleRight / widget.duration.inSeconds) * width - 10,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
                     setState(() {
@@ -158,10 +174,10 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     });
                   },
                   child: Container(
-                    height: 40,
-                    width: 30,
+                    height: 30,
+                    width: 20,
                     decoration: BoxDecoration(
-                      color: Colors.green,
+                      color: isDarkMode ? Colors.green[700] : Colors.green,
                       borderRadius: BorderRadius.circular(5),
                     ),
                   ),
@@ -170,8 +186,8 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
 
               // Position indicator (black circle)
               Positioned(
-                top: 20,
-                left: margin + (_position / widget.duration.inSeconds) * width - 10,
+                top: 17.5, // Adjusted to vertically center the circle
+                left: margin + (_position / widget.duration.inSeconds) * width - 7.5,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
                     setState(() {
@@ -195,11 +211,11 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     });
                   },
                   child: Container(
-                    height: 30,
-                    width: 30,
+                    height: 15,
+                    width: 15,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.black,
+                      color: isDarkMode ? Colors.grey[800] : Colors.black,
                     ),
                   ),
                 ),

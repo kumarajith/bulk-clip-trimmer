@@ -341,6 +341,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
     final positionAndDurationStream = Rx.combineLatest2<Duration, Duration, Map<String, Duration>>(
       player.stream.position,
       player.stream.duration,
@@ -362,7 +364,10 @@ class _VideoPlayerState extends State<VideoPlayer> {
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.volume_up, color: Colors.black),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Icon(Icons.volume_up, color: isDarkMode ? Colors.white : Colors.black),
+                    ),
                     SizedBox(
                       width: 200,
                       child: StreamBuilder<double>(
