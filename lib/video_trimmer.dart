@@ -1,13 +1,13 @@
 import 'dart:async'; // Import for Timer
 import 'package:flutter/material.dart';
 
-class VideoTrimSeekBar extends StatefulWidget {
+class VideoTrimSeekBarWidget extends StatefulWidget {
   final Duration duration; // Total video duration
   final Duration position; // Current position
   final ValueChanged<Duration> onPositionChange; // Seek bar callback
   final ValueChanged<RangeValues> onTrimChange; // Trim range callback
 
-  const VideoTrimSeekBar({
+  const VideoTrimSeekBarWidget({
     Key? key,
     required this.duration,
     required this.position,
@@ -16,46 +16,34 @@ class VideoTrimSeekBar extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _VideoTrimSeekBarState createState() => _VideoTrimSeekBarState();
+  _VideoTrimSeekBarWidgetState createState() => _VideoTrimSeekBarWidgetState();
 }
 
-class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
+class _VideoTrimSeekBarWidgetState extends State<VideoTrimSeekBarWidget> {
   late double _handleLeft; // Left green handle position in seconds
   late double _handleRight; // Right green handle position in seconds
   late double _position; // Black seek bar position in seconds
   Timer? _debounceTimer; // Timer for debouncing `onPositionChange`
+  bool isinitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeValues();
+    _initializeValues(true);
   }
 
   @override
-  void didUpdateWidget(VideoTrimSeekBar oldWidget) {
+  void didUpdateWidget(VideoTrimSeekBarWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    if (widget.duration != oldWidget.duration) {
-      _isInitialized = false; // Allow re-initialization when duration changes
-      _initializeValues();
-    }
-
-    if (widget.position != oldWidget.position) {
-      setState(() {
-        _position = widget.position.inSeconds.toDouble();
-      });
-    }
+    _initializeValues(oldWidget.duration != widget.duration);
   }
-  
-  bool _isInitialized = false;
 
-  void _initializeValues() {
-    if (!_isInitialized) {
+  void _initializeValues(updateHandlebars) {
+    if (updateHandlebars) {
       _handleLeft = 0.2 * widget.duration.inSeconds; // 20% of total duration
       _handleRight = 0.8 * widget.duration.inSeconds; // 80% of total duration
-      _position = widget.position.inSeconds.toDouble();
-      _isInitialized = true; // Prevent re-initialization
     }
+    _position = widget.position.inSeconds.toDouble();
   }
 
   void _onPositionChangeDebounced(Duration newDuration) {

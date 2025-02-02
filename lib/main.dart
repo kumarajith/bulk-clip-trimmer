@@ -25,6 +25,14 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   bool _isDarkMode = false;
+  late final player = Player();
+  late final controller = VideoController(player);
+
+  @override
+  void dispose() {
+    player.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,16 +44,17 @@ class _MyAppState extends State<MyApp> {
             _isDarkMode = !_isDarkMode;
           });
         },
+        player: player,
+        controller: controller,
       ),
     );
   }
 }
 
 class _VideoPlayerState extends State<VideoPlayer> {
-  late final player = Player();
-  late final controller = VideoController(player);
   final List<String> playlist = [];
   String? currentVideo;
+  late Stream<Map<String, Duration>> positionAndDurationStream;
 
   // State to manage labels and their checkboxes
   final Map<String, bool> labels = {};
@@ -72,11 +81,16 @@ class _VideoPlayerState extends State<VideoPlayer> {
       };
     });
     _labelControllers = List.generate(labels.length, (index) => TextEditingController());
+
+    positionAndDurationStream = Rx.combineLatest2<Duration, Duration, Map<String, Duration>>(
+      widget.player.stream.position,
+      widget.player.stream.duration,
+      (position, duration) => {'position': position, 'duration': duration},
+    );
   }
 
   @override
   void dispose() {
-    player.dispose();
     _trimJobController.close();
     _fileNameController.dispose();
     for (var controller in _labelControllers) {
@@ -236,8 +250,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
   void playVideo(String videoPath) {
     setState(() {
       currentVideo = videoPath;
-      player.open(Media(videoPath));
-      player.setVolume(0.0);
+      widget.player.open(Media(videoPath));
+      widget.player.setVolume(0.0);
     });
   }
 
@@ -343,11 +357,6 @@ class _VideoPlayerState extends State<VideoPlayer> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-    final positionAndDurationStream = Rx.combineLatest2<Duration, Duration, Map<String, Duration>>(
-      player.stream.position,
-      player.stream.duration,
-      (position, duration) => {'position': position, 'duration': duration},
-    );
 
     return Scaffold(
       body: Row(
@@ -358,7 +367,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
               children: [
                 Expanded(
                   child: Video(
-                    controller: controller,
+                    controller: widget.controller, // Use widget.controller
                     controls: (VideoState state) => SizedBox.shrink(),
                   ),
                 ),
@@ -371,7 +380,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
                     SizedBox(
                       width: 200,
                       child: StreamBuilder<double>(
-                        stream: player.stream.volume,
+                        stream: widget.player.stream.volume,
                         builder: (context, snapshot) {
                           final volume = snapshot.data ?? 0.0;
                           return Slider(
@@ -379,7 +388,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
                             min: 0.0,
                             max: 100.0,
                             onChanged: (value) async {
-                              await player.setVolume(value);
+                              await widget.player.setVolume(value);
                             },
                           );
                         },
@@ -393,11 +402,11 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
                           final position = snapshot.data!['position'] ?? Duration.zero;
                           final duration = snapshot.data!['duration'] ?? Duration.zero;
-                          return VideoTrimSeekBar(
+                          return VideoTrimSeekBarWidget(
                             duration: duration,
                             position: position,
                             onPositionChange: (newPosition) async {
-                              await player.seek(newPosition);
+                              await widget.player.seek(newPosition); // Use widget.player
                             },
                             onTrimChange: (newRange) {
                               _onTrimChangeHandler(newRange);
@@ -571,8 +580,15 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
 class VideoPlayer extends StatefulWidget {
   final VoidCallback onToggleTheme;
+  final Player player;
+  final VideoController controller;
 
-  const VideoPlayer({Key? key, required this.onToggleTheme}) : super(key: key);
+  const VideoPlayer({
+    Key? key,
+    required this.onToggleTheme,
+    required this.player,
+    required this.controller,
+  }) : super(key: key);
 
   @override
   _VideoPlayerState createState() => _VideoPlayerState();
