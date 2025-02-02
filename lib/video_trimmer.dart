@@ -31,6 +31,16 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
     _initializeValues();
   }
 
+  @override
+  void didUpdateWidget(VideoTrimSeekBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.position != oldWidget.position) {
+      setState(() {
+        _position = widget.position.inSeconds.toDouble();
+      });
+    }
+  }
+
   void _initializeValues() {
     _handleLeft = 0.2 * widget.duration.inSeconds; // Example initial left handle position (20%)
     _handleRight = 0.8 * widget.duration.inSeconds; // Example initial right handle position (80%)

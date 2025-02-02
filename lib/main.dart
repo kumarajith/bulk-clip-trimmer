@@ -12,10 +12,33 @@ import 'package:file_picker/file_picker.dart';
 void main() {
   MediaKit.ensureInitialized();
   runApp(
-    const MaterialApp(
-      home: VideoPlayer(),
-    ),
+    const MyApp(),
   );
+}
+
+class MyApp extends StatefulWidget {
+  const MyApp({Key? key}) : super(key: key);
+
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _isDarkMode = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      theme: _isDarkMode ? ThemeData.dark() : ThemeData.light(),
+      home: VideoPlayer(
+        onToggleTheme: () {
+          setState(() {
+            _isDarkMode = !_isDarkMode;
+          });
+        },
+      ),
+    );
+  }
 }
 
 class _VideoPlayerState extends State<VideoPlayer> {
@@ -36,6 +59,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
   final StreamController<Map<String, dynamic>> _trimJobController = StreamController.broadcast();
   final Queue<Map<String, dynamic>> _jobQueue = Queue();
   final TextEditingController _fileNameController = TextEditingController();
+  List<TextEditingController> _labelControllers = [];
 
   @override
   void initState() {
@@ -45,8 +69,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
       _jobQueue.add(job);
       if (!_processingTrims) {
         _processNextJob();
-      }
+      };
     });
+    _labelControllers = List.generate(labels.length, (index) => TextEditingController());
   }
 
   @override
@@ -54,6 +79,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
     player.dispose();
     _trimJobController.close();
     _fileNameController.dispose();
+    for (var controller in _labelControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -76,7 +104,13 @@ class _VideoPlayerState extends State<VideoPlayer> {
   }
 
   void labelFoldersWithTable() async {
-    final rows = <Map<String, String>>[]; // Each row will store {'label': '...', 'folder': '...'}
+    final rows = labels.entries.map((entry) {
+      return {'label': entry.key, 'folder': labelToFolder[entry.key] ?? ''};
+    }).toList();
+
+    if (rows.isEmpty || rows.last['label']!.isNotEmpty && rows.last['folder']!.isNotEmpty) {
+      rows.add({'label': '', 'folder': ''});
+    }
 
     await showDialog(
       context: context,
@@ -86,71 +120,88 @@ class _VideoPlayerState extends State<VideoPlayer> {
             return AlertDialog(
               title: Text('Label Folders'),
               content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Table Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Label', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('Folder', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    SizedBox(height: 10),
-                    // Rows of Labels and Folders
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: rows.length,
-                        itemBuilder: (context, index) {
-                          final row = rows[index];
-                          return Row(
-                            children: [
-                              // Label Input
-                              Expanded(
+                width: MediaQuery.of(context).size.width * 0.6, // Reduce the overall width of the modal
+                child: SingleChildScrollView(
+                  child: Table(
+                    border: TableBorder.all(color: Theme.of(context).dividerColor), // Change border color based on theme
+                    columnWidths: {
+                      0: FlexColumnWidth(1),
+                      1: FlexColumnWidth(1),
+                    },
+                    children: [
+                      TableRow(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).primaryColor.withOpacity(0.1),
+                        ),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text('Label', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text('Folder', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      ...rows.map((row) {
+                        final index = rows.indexOf(row);
+                        if (_labelControllers.length <= index) {
+                          _labelControllers.add(TextEditingController(text: row['label']));
+                        }
+                        return TableRow(
+                          children: [
+                            SizedBox(
+                              height: 60,
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
                                 child: TextField(
-                                  decoration: InputDecoration(hintText: 'Enter label'),
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter label',
+                                    contentPadding: EdgeInsets.symmetric(vertical: 10.0, horizontal: 10.0),
+                                    border: OutlineInputBorder(),
+                                  ),
                                   onChanged: (value) {
                                     setDialogState(() {
                                       rows[index]['label'] = value;
+                                      if (index == rows.length - 1 && value.isNotEmpty && row['folder']!.isNotEmpty) {
+                                        rows.add({'label': '', 'folder': ''});
+                                      }
                                     });
                                   },
+                                  controller: _labelControllers[index],
                                 ),
                               ),
-                              SizedBox(width: 10),
-                              // Folder Selection Button
-                              ElevatedButton(
-                                onPressed: () async {
-                                  final result = await FilePicker.platform.getDirectoryPath();
-                                  if (result != null) {
-                                    setDialogState(() {
-                                      rows[index]['folder'] = result;
-                                    });
-                                  }
-                                },
-                                child: Text(
-                                  row['folder']?.split('/').last ?? 'Select Folder',
-                                  overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(
+                              height: 60,
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    final result = await FilePicker.platform.getDirectoryPath();
+                                    if (result != null) {
+                                      setDialogState(() {
+                                        rows[index]['folder'] = result;
+                                        if (index == rows.length - 1 && row['label']!.isNotEmpty && result.isNotEmpty) {
+                                          rows.add({'label': '', 'folder': ''});
+                                        }
+                                      });
+                                    }
+                                  },
+                                  child: Text(
+                                    row['folder']?.split('/').last.isNotEmpty == true ? row['folder']!.split('/').last : 'Select Folder',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: Theme.of(context).textTheme.labelLarge?.color), // Ensure text is visible
+                                  ),
                                 ),
                               ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    // Add New Row Button
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        setDialogState(() {
-                          rows.add({'label': '', 'folder': ''});
-                        });
-                      },
-                      icon: Icon(Icons.add),
-                      label: Text('Add Row'),
-                    ),
-                  ],
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -161,6 +212,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
                 TextButton(
                   onPressed: () {
                     setState(() {
+                      labels.clear();
+                      labelToFolder.clear();
                       for (var row in rows) {
                         if (row['label']!.isNotEmpty && row['folder']!.isNotEmpty) {
                           labels[row['label']!] = false;
@@ -350,70 +403,85 @@ class _VideoPlayerState extends State<VideoPlayer> {
                     ),
                   ],
                 ),
+                Divider(),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.folder_open),
-                      onPressed: () async {
-                        final result = await FilePicker.platform.getDirectoryPath();
-                        if (result != null) {
-                          final dir = Directory(result);
-                          final videos = dir
-                              .listSync()
-                              .where((file) => file.path.endsWith('.mp4') || file.path.endsWith('.mkv'))
-                              .map((file) => file.path)
-                              .toList();
-                          setState(() {
-                            playlist.addAll(videos);
-                          });
-                        }
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.label),
-                      onPressed: labelFoldersWithTable,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: _addTrimJob,
-                    ),
-                    Checkbox(
-                      value: _isAudioOnly,
-                      onChanged: (bool? value) {
-                        setState(() {
-                          _isAudioOnly = value ?? false;
-                        });
-                      },
-                    ),
-                    Text('Audio only'),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: labels.entries.map((entry) {
-                            return Row(
-                              children: [
-                                Checkbox(
-                                  value: entry.value,
-                                  onChanged: (isChecked) {
-                                    setState(() {
-                                      labels[entry.key] = isChecked ?? false;
-                                    });
-                                  },
-                                ),
-                                Text(entry.key),
-                              ],
-                            );
-                          }).toList(),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.folder_open),
+                          onPressed: () async {
+                            final result = await FilePicker.platform.getDirectoryPath();
+                            if (result != null) {
+                              final dir = Directory(result);
+                              final videos = dir
+                                  .listSync()
+                                  .where((file) => file.path.endsWith('.mp4') || file.path.endsWith('.mkv'))
+                                  .map((file) => file.path)
+                                  .toList();
+                              setState(() {
+                                playlist.addAll(videos);
+                              });
+                            }
+                          },
                         ),
-                      ),
+                        VerticalDivider(),
+                        IconButton(
+                          icon: const Icon(Icons.label),
+                          onPressed: labelFoldersWithTable,
+                        ),
+                        SizedBox(width: 10),
+                        ...labels.keys.map((label) {
+                          return Row(
+                            children: [
+                              Checkbox(
+                                value: labels[label],
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    labels[label] = value ?? false;
+                                  });
+                                },
+                              ),
+                              Text(label),
+                            ],
+                          );
+                        }).toList(),
+                      ],
                     ),
+                    VerticalDivider(),
                     SizedBox(
-                      width: 200,
-                      child: TextField(
-                        controller: _fileNameController,
-                        decoration: InputDecoration(hintText: 'Enter output file name'),
+                      width: MediaQuery.of(context).size.width * 0.25,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Checkbox(
+                            value: _isAudioOnly,
+                            onChanged: (bool? value) {
+                              setState(() {
+                                _isAudioOnly = value ?? false;
+                              });
+                            },
+                          ),
+                          Icon(Icons.music_note),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _fileNameController,
+                              decoration: InputDecoration(hintText: 'Output file name'),
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          ElevatedButton(
+                            onPressed: _addTrimJob,
+                            child: Text('Add to Queue'),
+                          ),
+                          SizedBox(width: 10),
+                          IconButton(
+                            icon: Icon(Icons.brightness_6),
+                            onPressed: widget.onToggleTheme,
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -421,68 +489,73 @@ class _VideoPlayerState extends State<VideoPlayer> {
               ],
             ),
           ),
-          Container(
-            width: 400,
-            color: Colors.grey[200],
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: playlist.length,
-                    itemBuilder: (context, index) {
-                      final videoPath = playlist[index];
-                      final fileName = videoPath.split('/').last;
-                      return ListTile(
-                        title: Text(fileName, overflow: TextOverflow.ellipsis),
-                        onTap: () => playVideo(videoPath),
-                        selected: currentVideo == videoPath,
-                      );
-                    },
-                  ),
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(_showPlaceholderPanel
-                          ? Icons.arrow_drop_down
-                          : Icons.arrow_drop_up),
-                      onPressed: () {
-                        setState(() {
-                          _showPlaceholderPanel = !_showPlaceholderPanel;
-                        });
+          Theme(
+            data: Theme.of(context),
+            child: Container(
+              width: 400,
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: playlist.length,
+                      itemBuilder: (context, index) {
+                        final videoPath = playlist[index];
+                        final fileName = videoPath.split('/').last;
+                        return ListTile(
+                          title: Text(fileName, overflow: TextOverflow.ellipsis),
+                          onTap: () => playVideo(videoPath),
+                          selected: currentVideo == videoPath,
+                        );
                       },
                     ),
-                    Text('Placeholder Panel'),
-                  ],
-                ),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  height: _showPlaceholderPanel ? 200 : 0,
-                  color: Colors.grey[300],
-                  child: _showPlaceholderPanel
-                      ? ListView.builder(
-                          itemCount: _trimJobs.length,
-                          itemBuilder: (context, index) {
-                            final job = _trimJobs[index];
-                            return ListTile(
-                              title: Text(job['fileName']),
-                              subtitle: LinearProgressIndicator(
-                                value: job['progress'],
-                                backgroundColor: Colors.grey,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  job['progress'] == 1.0
-                                      ? Colors.green
-                                      : job['progress'] == -1.0
-                                          ? Colors.red
-                                          : Colors.blue,
-                                ),
-                              ),
-                            );
-                          },
-                        )
-                      : null,
-                ),
-              ],
+                  ),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(_showPlaceholderPanel
+                            ? Icons.arrow_drop_down
+                            : Icons.arrow_drop_up),
+                        onPressed: () {
+                          setState(() {
+                            _showPlaceholderPanel = !_showPlaceholderPanel;
+                          });
+                        },
+                      ),
+                      Text('Placeholder Panel'),
+                    ],
+                  ),
+                  Container(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      height: _showPlaceholderPanel ? 200 : 0,
+                      child: _showPlaceholderPanel
+                          ? ListView.builder(
+                              itemCount: _trimJobs.length,
+                              itemBuilder: (context, index) {
+                                final job = _trimJobs[index];
+                                return ListTile(
+                                  title: Text(job['fileName']),
+                                  subtitle: LinearProgressIndicator(
+                                    value: job['progress'],
+                                    backgroundColor: Colors.grey,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      job['progress'] == 1.0
+                                          ? Colors.green
+                                          : job['progress'] == -1.0
+                                              ? Colors.red
+                                              : Colors.blue,
+                                    ),
+                                  ),
+                                );
+                              },
+                            )
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -492,7 +565,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
 }
 
 class VideoPlayer extends StatefulWidget {
-  const VideoPlayer({Key? key}) : super(key: key);
+  final VoidCallback onToggleTheme;
+
+  const VideoPlayer({Key? key, required this.onToggleTheme}) : super(key: key);
 
   @override
   _VideoPlayerState createState() => _VideoPlayerState();
