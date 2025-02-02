@@ -8,6 +8,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   MediaKit.ensureInitialized();
@@ -27,11 +28,23 @@ class _MyAppState extends State<MyApp> {
   bool _isDarkMode = false;
   late final player = Player();
   late final controller = VideoController(player);
+  bool _isPlaying = false; // Add play/pause state
 
   @override
   void dispose() {
     player.dispose();
     super.dispose();
+  }
+
+  void _togglePlayPause() {
+    setState(() {
+      _isPlaying = !_isPlaying;
+      if (_isPlaying) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    });
   }
 
   @override
@@ -46,6 +59,8 @@ class _MyAppState extends State<MyApp> {
         },
         player: player,
         controller: controller,
+        onTogglePlayPause: _togglePlayPause, // Pass the play/pause toggle function
+        isPlaying: _isPlaying, // Pass the play/pause state
       ),
     );
   }
@@ -252,6 +267,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
       currentVideo = videoPath;
       widget.player.open(Media(videoPath));
       widget.player.setVolume(0.0);
+      widget.onTogglePlayPause(); // Use the play/pause toggle function from MyAppState
     });
   }
 
@@ -263,8 +279,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
 
   Future<void> _processTrimJob(Map<String, dynamic> job) async {
     final fileName = job['fileName'];
-    final start = job['start'];
-    final end = job['end'];
+    final start = Duration(milliseconds: (job['start'] * 1000).toInt());
+    final end = Duration(milliseconds: (job['end'] * 1000).toInt());
     final audioOnly = job['audioOnly'];
     final folders = job['folders'];
 
@@ -276,8 +292,8 @@ class _VideoPlayerState extends State<VideoPlayer> {
         'ffmpeg',
         '-y', // Automatically overwrite output file if it exists
         '-i', fileName,
-        '-ss', start.toString(),
-        '-to', end.toString(),
+        '-ss', start.toString().split('.').first, // Format to HH:MM:SS
+        '-to', end.toString().split('.').first, // Format to HH:MM:SS
         if (audioOnly) '-an',
         '-c', 'copy',
         outputFilePath,
@@ -303,7 +319,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
             milliseconds: milliseconds,
           ).inMilliseconds;
 
-          final totalDuration = (end - start) * 1000;
+          final totalDuration = (end - start).inMilliseconds;
           final progress = currentTime / totalDuration;
 
           setState(() {
@@ -359,220 +375,236 @@ class _VideoPlayerState extends State<VideoPlayer> {
     final isDarkMode = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      body: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Video(
-                    controller: widget.controller, // Use widget.controller
-                    controls: (VideoState state) => SizedBox.shrink(),
-                  ),
-                ),
-                Row(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Icon(Icons.volume_up, color: isDarkMode ? Colors.white : Colors.black),
-                    ),
-                    SizedBox(
-                      width: 200,
-                      child: StreamBuilder<double>(
-                        stream: widget.player.stream.volume,
-                        builder: (context, snapshot) {
-                          final volume = snapshot.data ?? 0.0;
-                          return Slider(
-                            value: volume,
-                            min: 0.0,
-                            max: 100.0,
-                            onChanged: (value) async {
-                              await widget.player.setVolume(value);
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: StreamBuilder<Map<String, Duration>>(
-                        stream: positionAndDurationStream,
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) return const CircularProgressIndicator();
-
-                          final position = snapshot.data!['position'] ?? Duration.zero;
-                          final duration = snapshot.data!['duration'] ?? Duration.zero;
-                          return VideoTrimSeekBarWidget(
-                            duration: duration,
-                            position: position,
-                            onPositionChange: (newPosition) async {
-                              await widget.player.seek(newPosition); // Use widget.player
-                            },
-                            onTrimChange: (newRange) {
-                              _onTrimChangeHandler(newRange);
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.folder_open),
-                          onPressed: () async {
-                            final result = await FilePicker.platform.getDirectoryPath();
-                            if (result != null) {
-                              final dir = Directory(result);
-                              final videos = dir
-                                  .listSync()
-                                  .where((file) => file.path.endsWith('.mp4') || file.path.endsWith('.mkv'))
-                                  .map((file) => file.path)
-                                  .toList();
-                              setState(() {
-                                playlist.addAll(videos);
-                              });
-                            }
-                          },
-                        ),
-                        VerticalDivider(),
-                        IconButton(
-                          icon: const Icon(Icons.label),
-                          onPressed: labelFoldersWithTable,
-                        ),
-                        SizedBox(width: 10),
-                        ...labels.keys.map((label) {
-                          return Row(
-                            children: [
-                              Checkbox(
-                                value: labels[label],
-                                onChanged: (bool? value) {
-                                  setState(() {
-                                    labels[label] = value ?? false;
-                                  });
-                                },
-                              ),
-                              Text(label),
-                            ],
-                          );
-                        }).toList(),
-                      ],
-                    ),
-                    VerticalDivider(),
-                    SizedBox(
-                      width: MediaQuery.of(context).size.width * 0.25,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Checkbox(
-                            value: _isAudioOnly,
-                            onChanged: (bool? value) {
-                              setState(() {
-                                _isAudioOnly = value ?? false;
-                              });
-                            },
-                          ),
-                          Icon(Icons.music_note),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: TextField(
-                              controller: _fileNameController,
-                              decoration: InputDecoration(hintText: 'Output file name'),
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          ElevatedButton(
-                            onPressed: _addTrimJob,
-                            child: Text('Add to Queue'),
-                          ),
-                          SizedBox(width: 10),
-                          IconButton(
-                            icon: Icon(Icons.brightness_6),
-                            onPressed: widget.onToggleTheme,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Theme(
-            data: Theme.of(context),
-            child: Container(
-              width: 400,
-              color: Theme.of(context).scaffoldBackgroundColor,
+      body: Focus(
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (event.logicalKey == LogicalKeyboardKey.space && event is KeyDownEvent) {
+            widget.onTogglePlayPause(); // Use the play/pause toggle function from MyAppState
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Row(
+          children: [
+            Expanded(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: playlist.length,
-                      itemBuilder: (context, index) {
-                        final videoPath = playlist[index];
-                        final fileName = videoPath.split('/').last;
-                        return ListTile(
-                          title: Text(fileName, overflow: TextOverflow.ellipsis),
-                          onTap: () => playVideo(videoPath),
-                          selected: currentVideo == videoPath,
-                        );
-                      },
+                    child: Video(
+                      controller: widget.controller, // Use widget.controller
+                      controls: (VideoState state) => SizedBox.shrink(),
                     ),
                   ),
                   Row(
                     children: [
+                      // Play/Pause button
                       IconButton(
-                        icon: Icon(_showPlaceholderPanel
-                            ? Icons.arrow_drop_down
-                            : Icons.arrow_drop_up),
-                        onPressed: () {
-                          setState(() {
-                            _showPlaceholderPanel = !_showPlaceholderPanel;
-                          });
-                        },
+                        icon: Icon(widget.isPlaying ? Icons.pause : Icons.play_arrow),
+                        onPressed: widget.onTogglePlayPause, // Use the play/pause toggle function from MyAppState
                       ),
-                      Text('Placeholder Panel'),
+                      Expanded(
+                        child: StreamBuilder<Map<String, Duration>>(
+                          stream: positionAndDurationStream,
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) return const CircularProgressIndicator();
+
+                            final position = snapshot.data!['position'] ?? Duration.zero;
+                            final duration = snapshot.data!['duration'] ?? Duration.zero;
+                            return VideoTrimSeekBarWidget(
+                              duration: duration,
+                              position: position,
+                              onPositionChange: (newPosition) async {
+                                await widget.player.seek(newPosition); // Use widget.player
+                              },
+                              onTrimChange: (newRange) {
+                                _onTrimChangeHandler(newRange);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      // Volume control
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Icon(Icons.volume_up, color: isDarkMode ? Colors.white : Colors.black),
+                      ),
+                      SizedBox(
+                        width: 200,
+                        child: StreamBuilder<double>(
+                          stream: widget.player.stream.volume,
+                          builder: (context, snapshot) {
+                            final volume = snapshot.data ?? 0.0;
+                            return Slider(
+                              value: volume,
+                              min: 0.0,
+                              max: 100.0,
+                              onChanged: (value) async {
+                                await widget.player.setVolume(value);
+                              },
+                            );
+                          },
+                        ),
+                      ),
                     ],
                   ),
-                  Container(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      height: _showPlaceholderPanel ? 200 : 0,
-                      child: _showPlaceholderPanel
-                          ? ListView.builder(
-                              itemCount: _trimJobs.length,
-                              itemBuilder: (context, index) {
-                                final job = _trimJobs[index];
-                                return ListTile(
-                                  title: Text(job['fileName']),
-                                  subtitle: LinearProgressIndicator(
-                                    value: job['progress'],
-                                    backgroundColor: Colors.grey,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      job['progress'] == 1.0
-                                          ? Colors.green
-                                          : job['progress'] == -1.0
-                                              ? Colors.red
-                                              : Colors.blue,
-                                    ),
-                                  ),
-                                );
+                  Divider(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.folder_open),
+                            onPressed: () async {
+                              final result = await FilePicker.platform.getDirectoryPath();
+                              if (result != null) {
+                                final dir = Directory(result);
+                                final videos = dir
+                                    .listSync()
+                                    .where((file) => file.path.endsWith('.mp4') || file.path.endsWith('.mkv'))
+                                    .map((file) => file.path)
+                                    .toList();
+                                setState(() {
+                                  playlist.addAll(videos);
+                                });
+                              }
+                            },
+                          ),
+                          VerticalDivider(),
+                          IconButton(
+                            icon: const Icon(Icons.label),
+                            onPressed: labelFoldersWithTable,
+                          ),
+                          SizedBox(width: 10),
+                          ...labels.keys.map((label) {
+                            return Row(
+                              children: [
+                                Checkbox(
+                                  value: labels[label],
+                                  onChanged: (bool? value) {
+                                    setState(() {
+                                      labels[label] = value ?? false;
+                                    });
+                                  },
+                                ),
+                                Text(label),
+                              ],
+                            );
+                          }).toList(),
+                        ],
+                      ),
+                      VerticalDivider(),
+                      SizedBox(
+                        width: MediaQuery.of(context).size.width * 0.25,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Checkbox(
+                              value: _isAudioOnly,
+                              onChanged: (bool? value) {
+                                setState(() {
+                                  _isAudioOnly = value ?? false;
+                                });
                               },
-                            )
-                          : null,
-                    ),
+                            ),
+                            Icon(Icons.music_note),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _fileNameController,
+                                decoration: InputDecoration(hintText: 'Output file name'),
+                              ),
+                            ),
+                            SizedBox(width: 10),
+                            ElevatedButton(
+                              onPressed: _addTrimJob,
+                              child: Text('Add to Queue'),
+                            ),
+                            SizedBox(width: 10),
+                            IconButton(
+                              icon: Icon(Icons.brightness_6),
+                              onPressed: widget.onToggleTheme,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            Theme(
+              data: Theme.of(context),
+              child: Container(
+                width: 400,
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: playlist.length,
+                        itemBuilder: (context, index) {
+                          final videoPath = playlist[index];
+                          final fileName = videoPath.split('/').last;
+                          return ListTile(
+                            title: Text(fileName, overflow: TextOverflow.ellipsis),
+                            onTap: () => playVideo(videoPath),
+                            selected: currentVideo == videoPath,
+                          );
+                        },
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(_showPlaceholderPanel
+                              ? Icons.arrow_drop_down
+                              : Icons.arrow_drop_up),
+                          onPressed: () {
+                            setState(() {
+                              _showPlaceholderPanel = !_showPlaceholderPanel;
+                            });
+                          },
+                        ),
+                        Text('Placeholder Panel'),
+                      ],
+                    ),
+                    Container(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        height: _showPlaceholderPanel ? 200 : 0,
+                        child: _showPlaceholderPanel
+                            ? ListView.builder(
+                                itemCount: _trimJobs.length,
+                                itemBuilder: (context, index) {
+                                  final job = _trimJobs[index];
+                                  return ListTile(
+                                    title: Text(job['fileName']),
+                                    subtitle: LinearProgressIndicator(
+                                      value: job['progress'],
+                                      backgroundColor: Colors.grey,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        job['progress'] == 1.0
+                                            ? Colors.green
+                                            : job['progress'] == -1.0
+                                                ? Colors.red
+                                                : Colors.blue,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              )
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -582,12 +614,16 @@ class VideoPlayer extends StatefulWidget {
   final VoidCallback onToggleTheme;
   final Player player;
   final VideoController controller;
+  final VoidCallback onTogglePlayPause; // Add play/pause toggle function
+  final bool isPlaying; // Add play/pause state
 
   const VideoPlayer({
     Key? key,
     required this.onToggleTheme,
     required this.player,
     required this.controller,
+    required this.onTogglePlayPause, // Add play/pause toggle function
+    required this.isPlaying, // Add play/pause state
   }) : super(key: key);
 
   @override

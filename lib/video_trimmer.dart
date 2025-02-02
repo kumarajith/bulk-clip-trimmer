@@ -20,9 +20,9 @@ class VideoTrimSeekBarWidget extends StatefulWidget {
 }
 
 class _VideoTrimSeekBarWidgetState extends State<VideoTrimSeekBarWidget> {
-  late double _handleLeft; // Left green handle position in seconds
-  late double _handleRight; // Right green handle position in seconds
-  late double _position; // Black seek bar position in seconds
+  late double _handleLeft; // Left green handle position in milliseconds
+  late double _handleRight; // Right green handle position in milliseconds
+  late double _position; // Black seek bar position in milliseconds
   Timer? _debounceTimer; // Timer for debouncing `onPositionChange`
   bool isinitialized = false;
 
@@ -40,10 +40,10 @@ class _VideoTrimSeekBarWidgetState extends State<VideoTrimSeekBarWidget> {
 
   void _initializeValues(updateHandlebars) {
     if (updateHandlebars) {
-      _handleLeft = 0.2 * widget.duration.inSeconds; // 20% of total duration
-      _handleRight = 0.8 * widget.duration.inSeconds; // 80% of total duration
+      _handleLeft = 0.2 * widget.duration.inMilliseconds; // 20% of total duration
+      _handleRight = 0.8 * widget.duration.inMilliseconds; // 80% of total duration
     }
-    _position = widget.position.inSeconds.toDouble();
+    _position = widget.position.inMilliseconds.toDouble();
   }
 
   void _onPositionChangeDebounced(Duration newDuration) {
@@ -77,8 +77,8 @@ class _VideoTrimSeekBarWidgetState extends State<VideoTrimSeekBarWidget> {
               // Yellow highlighted area
               Positioned(
                 top: 15,
-                left: margin + (_handleLeft / widget.duration.inSeconds) * width,
-                right: margin + ((widget.duration.inSeconds - _handleRight) / widget.duration.inSeconds) * width,
+                left: margin + (_handleLeft / widget.duration.inMilliseconds) * width,
+                right: margin + ((widget.duration.inMilliseconds - _handleRight) / widget.duration.inMilliseconds) * width,
                 child: Container(
                   height: 20,
                   decoration: BoxDecoration(
@@ -96,21 +96,21 @@ class _VideoTrimSeekBarWidgetState extends State<VideoTrimSeekBarWidget> {
                   behavior: HitTestBehavior.opaque,
                   onHorizontalDragUpdate: (details) {
                     setState(() {
-                      final newPosition = (_position + (details.delta.dx / width) * widget.duration.inSeconds)
-                          .clamp(0.0, widget.duration.inSeconds.toDouble());
+                      final newPosition = (_position + (details.delta.dx / width) * widget.duration.inMilliseconds)
+                          .clamp(0.0, widget.duration.inMilliseconds.toDouble());
                       _position = newPosition;
 
-                      final newDuration = Duration(seconds: _position.round());
+                      final newDuration = Duration(milliseconds: _position.round());
 
                       _onPositionChangeDebounced(newDuration);
                     });
                   },
                   onTapDown: (details) {
                     setState(() {
-                      final tapPosition = (details.localPosition.dx / width) * widget.duration.inSeconds;
-                      _position = tapPosition.clamp(0.0, widget.duration.inSeconds.toDouble());
+                      final tapPosition = (details.localPosition.dx / width) * widget.duration.inMilliseconds;
+                      _position = tapPosition.clamp(0.0, widget.duration.inMilliseconds.toDouble());
 
-                      final newDuration = Duration(seconds: _position.round());
+                      final newDuration = Duration(milliseconds: _position.round());
 
                       _onPositionChangeDebounced(newDuration);
                     });
@@ -129,11 +129,11 @@ class _VideoTrimSeekBarWidgetState extends State<VideoTrimSeekBarWidget> {
               // Left handle (green)
               Positioned(
                 top: 10, // Adjusted to vertically center the handle
-                left: margin + (_handleLeft / widget.duration.inSeconds) * width - 10,
+                left: margin + (_handleLeft / widget.duration.inMilliseconds) * width - 10,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
                     setState(() {
-                      _handleLeft = ((_handleLeft + (details.delta.dx / width) * widget.duration.inSeconds)
+                      _handleLeft = ((_handleLeft + (details.delta.dx / width) * widget.duration.inMilliseconds)
                           .clamp(0.0, _handleRight));
                       widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
                     });
@@ -152,12 +152,12 @@ class _VideoTrimSeekBarWidgetState extends State<VideoTrimSeekBarWidget> {
               // Right handle (green)
               Positioned(
                 top: 10, // Adjusted to vertically center the handle
-                left: margin + (_handleRight / widget.duration.inSeconds) * width - 10,
+                left: margin + (_handleRight / widget.duration.inMilliseconds) * width - 10,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
                     setState(() {
-                      _handleRight = ((_handleRight + (details.delta.dx / width) * widget.duration.inSeconds)
-                          .clamp(_handleLeft, widget.duration.inSeconds.toDouble()));
+                      _handleRight = ((_handleRight + (details.delta.dx / width) * widget.duration.inMilliseconds)
+                          .clamp(_handleLeft, widget.duration.inMilliseconds.toDouble()));
                       widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
                     });
                   },
@@ -175,25 +175,25 @@ class _VideoTrimSeekBarWidgetState extends State<VideoTrimSeekBarWidget> {
               // Position indicator (black circle)
               Positioned(
                 top: 17.5, // Adjusted to vertically center the circle
-                left: margin + (_position / widget.duration.inSeconds) * width - 7.5,
+                left: margin + (_position / widget.duration.inMilliseconds) * width - 7.5,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
                     setState(() {
-                      final newPosition = (_position + (details.delta.dx / width) * widget.duration.inSeconds)
-                          .clamp(0.0, widget.duration.inSeconds.toDouble());
+                      final newPosition = (_position + (details.delta.dx / width) * widget.duration.inMilliseconds)
+                          .clamp(0.0, widget.duration.inMilliseconds.toDouble());
                       _position = newPosition;
 
-                      final newDuration = Duration(seconds: _position.round());
+                      final newDuration = Duration(milliseconds: _position.round());
 
                       _onPositionChangeDebounced(newDuration);
                     });
                   },
                   onTapDown: (details) {
                     setState(() {
-                      final tapPosition = (details.localPosition.dx / width) * widget.duration.inSeconds;
-                      _position = tapPosition.clamp(0.0, widget.duration.inSeconds.toDouble());
+                      final tapPosition = (details.localPosition.dx / width) * widget.duration.inMilliseconds;
+                      _position = tapPosition.clamp(0.0, widget.duration.inMilliseconds.toDouble());
 
-                      final newDuration = Duration(seconds: _position.round());
+                      final newDuration = Duration(milliseconds: _position.round());
 
                       _onPositionChangeDebounced(newDuration);
                     });
