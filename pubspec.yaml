@@ -40,6 +40,7 @@ dependencies:
   rxdart: ^0.28.0
   file_picker: ^8.1.6
   video_thumbnail: ^0.5.3
+  path_provider: ^2.1.2 # For accessing system directories
 
 dev_dependencies:
   flutter_test:
