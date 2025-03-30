@@ -9,11 +9,15 @@ class LabelFolder {
   /// Whether this label is selected for the current trim job
   final bool isSelected;
   
+  /// Whether to extract audio only for this folder
+  final bool audioOnly;
+  
   /// Constructor
   const LabelFolder({
     required this.label,
     required this.folderPath,
     this.isSelected = false,
+    this.audioOnly = false,
   });
   
   /// Create a copy of this LabelFolder with updated properties
@@ -21,11 +25,13 @@ class LabelFolder {
     String? label,
     String? folderPath,
     bool? isSelected,
+    bool? audioOnly,
   }) {
     return LabelFolder(
       label: label ?? this.label,
       folderPath: folderPath ?? this.folderPath,
       isSelected: isSelected ?? this.isSelected,
+      audioOnly: audioOnly ?? this.audioOnly,
     );
   }
   
@@ -35,6 +41,7 @@ class LabelFolder {
       'label': label,
       'folderPath': folderPath,
       'isSelected': isSelected,
+      'audioOnly': audioOnly,
     };
   }
 
@@ -44,6 +51,7 @@ class LabelFolder {
       label: map['label'] ?? '',
       folderPath: map['folderPath'] ?? '',
       isSelected: map['isSelected'] ?? false,
+      audioOnly: map['audioOnly'] ?? false,
     );
   }
 
@@ -53,8 +61,9 @@ class LabelFolder {
       other is LabelFolder &&
           runtimeType == other.runtimeType &&
           label == other.label &&
-          folderPath == other.folderPath;
+          folderPath == other.folderPath &&
+          audioOnly == other.audioOnly;
 
   @override
-  int get hashCode => label.hashCode ^ folderPath.hashCode;
+  int get hashCode => label.hashCode ^ folderPath.hashCode ^ audioOnly.hashCode;
 }

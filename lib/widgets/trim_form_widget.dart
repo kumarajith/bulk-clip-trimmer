@@ -44,7 +44,6 @@ class _TrimFormWidgetState extends State<TrimFormWidget> {
     return AnimatedBuilder(
       animation: widget.appState,
       builder: (context, _) {
-        final isAudioOnly = widget.appState.isAudioOnly;
         final hasVideo = widget.appState.currentVideo != null;
         final hasTrimRange = widget.appState.trimRange != null;
         final hasLabels = widget.appState.labelFolders.any((lf) => lf.isSelected);
@@ -66,25 +65,6 @@ class _TrimFormWidgetState extends State<TrimFormWidget> {
                 Text(
                   'Trim Settings',
                   style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 16),
-                
-                // Audio only toggle
-                Row(
-                  children: [
-                    Checkbox(
-                      value: isAudioOnly,
-                      onChanged: (value) {
-                        widget.appState.toggleAudioOnly();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    const Text('Audio Only'),
-                    const Tooltip(
-                      message: 'Extract only the audio from the video',
-                      child: Icon(Icons.info_outline, size: 16),
-                    ),
-                  ],
                 ),
                 const SizedBox(height: 16),
                 

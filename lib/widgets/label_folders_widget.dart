@@ -46,13 +46,15 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
             return AlertDialog(
               title: Text('Label Folders'),
               content: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.6,
+                width: MediaQuery.of(context).size.width * 0.8,
+                height: MediaQuery.of(context).size.height * 0.7,
                 child: SingleChildScrollView(
                   child: Table(
                     border: TableBorder.all(color: Theme.of(context).dividerColor),
                     columnWidths: const {
                       0: FlexColumnWidth(1),
-                      1: FlexColumnWidth(1),
+                      1: FlexColumnWidth(2),
+                      2: IntrinsicColumnWidth(),
                     },
                     children: [
                       TableRow(
@@ -67,6 +69,10 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                           Padding(
                             padding: EdgeInsets.all(8.0),
                             child: Text('Folder', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: Text('Audio', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),
@@ -154,6 +160,24 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                                 ),
                               ),
                             ),
+                            SizedBox(
+                              height: 60,
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Center(
+                                  child: Checkbox(
+                                    value: labelFolder.audioOnly,
+                                    onChanged: (value) {
+                                      setDialogState(() {
+                                        labelFolders[index] = labelFolders[index].copyWith(
+                                          audioOnly: value ?? false,
+                                        );
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         );
                       }).toList(),
@@ -230,19 +254,78 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                 ),
               )
             else
-              Wrap(
-                spacing: 8.0,
-                runSpacing: 4.0,
-                children: labelFolders.map((labelFolder) {
-                  return FilterChip(
-                    label: Text(labelFolder.label),
-                    selected: labelFolder.isSelected,
-                    onSelected: (selected) {
-                      widget.appState.toggleLabelSelection(labelFolder.label);
-                    },
-                    tooltip: labelFolder.folderPath,
-                  );
-                }).toList(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8.0,
+                      runSpacing: 4.0,
+                      children: labelFolders.map((labelFolder) {
+                        return FilterChip(
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(labelFolder.label),
+                              if (labelFolder.audioOnly)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4.0),
+                                  child: Icon(
+                                    Icons.music_note,
+                                    size: 16,
+                                    color: Theme.of(context).colorScheme.onSurface,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          selected: labelFolder.isSelected,
+                          onSelected: (selected) {
+                            widget.appState.toggleLabelSelection(labelFolder.label);
+                          },
+                          tooltip: '${labelFolder.folderPath}${labelFolder.audioOnly ? ' (Audio Only)' : ''}',
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 8),
+                    // Display details of selected folders with audio toggle
+                    ...labelFolders.where((lf) => lf.isSelected).map((folder) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Row(
+                          children: [
+                            Icon(
+                              folder.audioOnly ? Icons.music_note : Icons.videocam,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              folder.label,
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton.icon(
+                              icon: Icon(
+                                folder.audioOnly ? Icons.music_note : Icons.videocam,
+                                size: 16,
+                              ),
+                              label: Text(folder.audioOnly ? 'Audio Only' : 'Video + Audio'),
+                              onPressed: () {
+                                widget.appState.toggleAudioOnly(folder.label);
+                              },
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                ),
               ),
           ],
         );

@@ -51,14 +51,22 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
   void didUpdateWidget(VideoTrimSeekBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     _initializeValues(oldWidget.duration != widget.duration);
+    // Always update position when widget updates
+    _position = widget.position.inMilliseconds.toDouble();
   }
 
   /// Initialize the seekbar values
   void _initializeValues(bool updateHandlebars) {
+    final duration = widget.duration.inMilliseconds > 0 ? 
+        widget.duration.inMilliseconds.toDouble() : 1.0;
+    
     if (updateHandlebars) {
-      _handleLeft = 0.2 * widget.duration.inMilliseconds; // 20% of total duration
-      _handleRight = 0.8 * widget.duration.inMilliseconds; // 80% of total duration
-      widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
+      _handleLeft = 0.2 * duration; // 20% of total duration
+      _handleRight = 0.8 * duration; // 80% of total duration
+      // Notify parent about initial trim range
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
+      });
     }
     _position = widget.position.inMilliseconds.toDouble();
   }
@@ -81,6 +89,8 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
+    final duration = widget.duration.inMilliseconds > 0 ? 
+        widget.duration.inMilliseconds.toDouble() : 1.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -95,10 +105,10 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
               // Highlighted trim area
               Positioned(
                 top: 15,
-                left: margin + (_handleLeft / widget.duration.inMilliseconds) * width,
-                right: margin + ((widget.duration.inMilliseconds - _handleRight) / widget.duration.inMilliseconds) * width,
+                left: margin + (_handleLeft / duration) * width,
+                width: ((_handleRight - _handleLeft) / duration) * width,
+                height: 20,
                 child: Container(
-                  height: 20,
                   decoration: BoxDecoration(
                     color: isDarkMode ? Colors.yellow[700] : Colors.yellow,
                     borderRadius: BorderRadius.circular(10),
@@ -114,8 +124,8 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                   behavior: HitTestBehavior.opaque,
                   onHorizontalDragUpdate: (details) {
                     setState(() {
-                      final newPosition = (_position + (details.delta.dx / width) * widget.duration.inMilliseconds)
-                          .clamp(0.0, widget.duration.inMilliseconds.toDouble());
+                      final newPosition = (_position + (details.delta.dx / width) * duration)
+                          .clamp(0.0, duration);
                       _position = newPosition;
 
                       final newDuration = Duration(milliseconds: _position.round());
@@ -124,8 +134,8 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                   },
                   onTapDown: (details) {
                     setState(() {
-                      final tapPosition = (details.localPosition.dx / width) * widget.duration.inMilliseconds;
-                      _position = tapPosition.clamp(0.0, widget.duration.inMilliseconds.toDouble());
+                      final tapPosition = (details.localPosition.dx / width) * duration;
+                      _position = tapPosition.clamp(0.0, duration);
 
                       final newDuration = Duration(milliseconds: _position.round());
                       _onPositionChangeDebounced(newDuration);
@@ -145,12 +155,12 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
               // Left trim handle
               Positioned(
                 top: 10,
-                left: margin + (_handleLeft / widget.duration.inMilliseconds) * width - 10,
+                left: margin + (_handleLeft / duration) * width - 10,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
                     setState(() {
-                      _handleLeft = ((_handleLeft + (details.delta.dx / width) * widget.duration.inMilliseconds)
-                          .clamp(0.0, _handleRight));
+                      _handleLeft = ((_handleLeft + (details.delta.dx / width) * duration)
+                          .clamp(0.0, _handleRight - 1000)); // Ensure minimum 1 second gap
                       widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
                     });
                   },
@@ -160,6 +170,9 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     decoration: BoxDecoration(
                       color: isDarkMode ? Colors.green[700] : Colors.green,
                       borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.arrow_left, color: Colors.white, size: 16),
                     ),
                   ),
                 ),
@@ -168,12 +181,12 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
               // Right trim handle
               Positioned(
                 top: 10,
-                left: margin + (_handleRight / widget.duration.inMilliseconds) * width - 10,
+                left: margin + (_handleRight / duration) * width - 10,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
                     setState(() {
-                      _handleRight = ((_handleRight + (details.delta.dx / width) * widget.duration.inMilliseconds)
-                          .clamp(_handleLeft, widget.duration.inMilliseconds.toDouble()));
+                      _handleRight = ((_handleRight + (details.delta.dx / width) * duration)
+                          .clamp(_handleLeft + 1000, duration)); // Ensure minimum 1 second gap
                       widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
                     });
                   },
@@ -184,6 +197,9 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                       color: isDarkMode ? Colors.green[700] : Colors.green,
                       borderRadius: BorderRadius.circular(5),
                     ),
+                    child: const Center(
+                      child: Icon(Icons.arrow_right, color: Colors.white, size: 16),
+                    ),
                   ),
                 ),
               ),
@@ -191,36 +207,28 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
               // Position indicator
               Positioned(
                 top: 17.5,
-                left: margin + (_position / widget.duration.inMilliseconds) * width - 7.5,
-                child: GestureDetector(
-                  onHorizontalDragUpdate: (details) {
-                    setState(() {
-                      final newPosition = (_position + (details.delta.dx / width) * widget.duration.inMilliseconds)
-                          .clamp(0.0, widget.duration.inMilliseconds.toDouble());
-                      _position = newPosition;
-
-                      final newDuration = Duration(milliseconds: _position.round());
-                      _onPositionChangeDebounced(newDuration);
-                    });
-                  },
-                  child: Container(
-                    height: 15,
-                    width: 15,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isDarkMode ? Colors.grey[300] : Colors.black,
-                    ),
+                left: margin + (_position / duration) * width - 7.5,
+                child: Container(
+                  height: 15,
+                  width: 15,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.black, width: 2),
                   ),
                 ),
               ),
-              
+
               // Time indicators
               Positioned(
                 bottom: 0,
                 left: margin,
                 child: Text(
                   _formatDuration(Duration(milliseconds: _position.round())),
-                  style: TextStyle(fontSize: 12),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDarkMode ? Colors.white70 : Colors.black54,
+                  ),
                 ),
               ),
               Positioned(
@@ -228,7 +236,10 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                 right: margin,
                 child: Text(
                   _formatDuration(widget.duration),
-                  style: TextStyle(fontSize: 12),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDarkMode ? Colors.white70 : Colors.black54,
+                  ),
                 ),
               ),
             ],
@@ -237,12 +248,12 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
       },
     );
   }
-  
+
   /// Format duration as MM:SS
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$minutes:$seconds";
+    return '$minutes:$seconds';
   }
 }

@@ -58,9 +58,18 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
         children: [
           // Video display
           Expanded(
-            child: Video(
-              controller: widget.controller,
-              controls: (VideoState state) => SizedBox.shrink(),
+            child: Container(
+              color: Colors.black,
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Video(
+                    controller: widget.controller,
+                    controls: (VideoState state) => const SizedBox.shrink(),
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
             ),
           ),
           
@@ -111,17 +120,20 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                 builder: (context, snapshot) {
                   final volume = snapshot.data ?? 0.0;
                   return Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.volume_up),
-                      SizedBox(width: 8),
+                      const Icon(Icons.volume_up),
+                      const SizedBox(width: 8),
                       SizedBox(
                         width: 100,
                         child: Slider(
                           value: volume,
                           min: 0.0,
                           max: 100.0,
-                          onChanged: (value) async {
-                            await widget.appState.player.setVolume(value);
+                          divisions: 20,
+                          label: '${volume.round()}',
+                          onChanged: (value) {
+                            widget.appState.player.setVolume(value);
                           },
                         ),
                       ),

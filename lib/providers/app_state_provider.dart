@@ -40,9 +40,6 @@ class AppStateProvider extends ChangeNotifier {
   /// Output file name
   String _outputFileName = '';
 
-  /// Flag for audio only extraction
-  bool _isAudioOnly = false;
-
   /// Flag for dark mode
   bool _isDarkMode = false;
 
@@ -95,9 +92,6 @@ class AppStateProvider extends ChangeNotifier {
   /// Get the output file name
   String get outputFileName => _outputFileName;
 
-  /// Get whether audio only extraction is enabled
-  bool get isAudioOnly => _isAudioOnly;
-
   /// Get whether dark mode is enabled
   bool get isDarkMode => _isDarkMode;
 
@@ -130,12 +124,6 @@ class AppStateProvider extends ChangeNotifier {
   /// Set the output file name
   void setOutputFileName(String name) {
     _outputFileName = name;
-    notifyListeners();
-  }
-
-  /// Toggle audio only extraction
-  void toggleAudioOnly() {
-    _isAudioOnly = !_isAudioOnly;
     notifyListeners();
   }
 
@@ -220,28 +208,44 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
+  /// Toggle audio only for a label folder
+  void toggleAudioOnly(String label) {
+    final index = _labelFolders.indexWhere((lf) => lf.label == label);
+    if (index != -1) {
+      _labelFolders[index] = _labelFolders[index].copyWith(
+        audioOnly: !_labelFolders[index].audioOnly,
+      );
+      _labelFolderService.saveLabelFolders();
+      notifyListeners();
+    }
+  }
+
   /// Add a trim job
   void addTrimJob() {
     if (_currentVideo != null && _trimRange != null && _outputFileName.isNotEmpty) {
       final selectedFolders = _labelFolders.where((lf) => lf.isSelected).toList();
       
       if (selectedFolders.isNotEmpty) {
-        final outputFolderPaths = selectedFolders.map((f) => f.folderPath).toList();
+        // Create a job for each selected folder
+        final jobs = <TrimJob>[];
         
-        final job = TrimJob(
-          filePath: _currentVideo!.filePath,
-          startTime: _trimRange!.start,
-          endTime: _trimRange!.end,
-          audioOnly: _isAudioOnly,
-          outputFolders: outputFolderPaths,
-          outputFileName: _outputFileName,
-          progress: 0.0,
-        );
-        
-        _trimJobs.add(job);
+        for (final folder in selectedFolders) {
+          final job = TrimJob(
+            filePath: _currentVideo!.filePath,
+            startTime: _trimRange!.start,
+            endTime: _trimRange!.end,
+            audioOnly: folder.audioOnly, // Use the folder's audioOnly setting
+            outputFolders: [folder.folderPath], // One folder per job
+            outputFileName: _outputFileName,
+            progress: 0.0,
+          );
+          
+          jobs.add(job);
+          _trimJobs.add(job);
+        }
         
         // Start processing jobs
-        _trimJobService.processJobs([job]);
+        _trimJobService.processJobs(jobs);
         
         // Reset form
         _outputFileName = '';
