@@ -29,6 +29,17 @@ class _MyAppState extends State<MyApp> {
   late final player = Player();
   late final controller = VideoController(player);
   bool _isPlaying = false; // Add play/pause state
+  double _volume = 0.0; // Add volume state
+
+  @override
+  void initState() {
+    super.initState();
+    player.stream.volume.listen((volume) {
+      setState(() {
+        _volume = volume;
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -61,6 +72,10 @@ class _MyAppState extends State<MyApp> {
         controller: controller,
         onTogglePlayPause: _togglePlayPause, // Pass the play/pause toggle function
         isPlaying: _isPlaying, // Pass the play/pause state
+        volume: _volume, // Pass the volume state
+        onVolumeChange: (value) async {
+          await player.setVolume(value);
+        }, // Pass the volume change function
       ),
     );
   }
@@ -266,7 +281,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
     setState(() {
       currentVideo = videoPath;
       widget.player.open(Media(videoPath));
-      widget.player.setVolume(0.0);
+      widget.player.setVolume(widget.volume); // Set the volume when a new video is played
       widget.onTogglePlayPause(); // Use the play/pause toggle function from MyAppState
     });
   }
@@ -431,19 +446,11 @@ class _VideoPlayerState extends State<VideoPlayer> {
                       ),
                       SizedBox(
                         width: 200,
-                        child: StreamBuilder<double>(
-                          stream: widget.player.stream.volume,
-                          builder: (context, snapshot) {
-                            final volume = snapshot.data ?? 0.0;
-                            return Slider(
-                              value: volume,
-                              min: 0.0,
-                              max: 100.0,
-                              onChanged: (value) async {
-                                await widget.player.setVolume(value);
-                              },
-                            );
-                          },
+                        child: Slider(
+                          value: widget.volume,
+                          min: 0.0,
+                          max: 100.0,
+                          onChanged: widget.onVolumeChange,
                         ),
                       ),
                     ],
@@ -551,6 +558,7 @@ class _VideoPlayerState extends State<VideoPlayer> {
                             title: Text(fileName, overflow: TextOverflow.ellipsis),
                             onTap: () => playVideo(videoPath),
                             selected: currentVideo == videoPath,
+                            selectedTileColor: isDarkMode ? Colors.grey[700] : Colors.grey[300], // Highlight selected file
                           );
                         },
                       ),
@@ -616,6 +624,8 @@ class VideoPlayer extends StatefulWidget {
   final VideoController controller;
   final VoidCallback onTogglePlayPause; // Add play/pause toggle function
   final bool isPlaying; // Add play/pause state
+  final double volume; // Add volume state
+  final ValueChanged<double> onVolumeChange; // Add volume change function
 
   const VideoPlayer({
     Key? key,
@@ -624,6 +634,8 @@ class VideoPlayer extends StatefulWidget {
     required this.controller,
     required this.onTogglePlayPause, // Add play/pause toggle function
     required this.isPlaying, // Add play/pause state
+    required this.volume, // Add volume state
+    required this.onVolumeChange, // Add volume change function
   }) : super(key: key);
 
   @override
