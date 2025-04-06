@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:flutter_window_close/flutter_window_close.dart';
 
 import 'providers/app_state_provider.dart';
 import 'screens/main_screen.dart';
@@ -42,6 +43,9 @@ class _MyAppState extends State<MyApp> {
   
   // App state provider
   late final AppStateProvider _appState;
+  
+  // Global key for navigator
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -53,6 +57,40 @@ class _MyAppState extends State<MyApp> {
     
     // Initialize app state provider
     _appState = AppStateProvider(player: _player);
+    
+    // Set up window close handler
+    FlutterWindowClose.setWindowShouldCloseHandler(() async {
+      // Check if there are any active jobs
+      final hasActiveJobs = _appState.hasActiveJobs;
+      
+      if (hasActiveJobs) {
+        // Show a warning dialog
+        final shouldClose = await showDialog<bool>(
+          context: _navigatorKey.currentContext!,
+          builder: (context) => AlertDialog(
+            title: const Text('Warning'),
+            content: const Text(
+              'You have active trim jobs in progress. Closing the app will cancel these jobs. '
+              'Are you sure you want to exit?'
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Exit Anyway'),
+              ),
+            ],
+          ),
+        ) ?? false;
+        
+        return shouldClose;
+      }
+      
+      return true;
+    });
   }
 
   @override
@@ -60,6 +98,7 @@ class _MyAppState extends State<MyApp> {
     // Dispose resources
     _player.dispose();
     _appState.dispose();
+    FlutterWindowClose.setWindowShouldCloseHandler(null);
     super.dispose();
   }
 
@@ -69,6 +108,7 @@ class _MyAppState extends State<MyApp> {
       animation: _appState,
       builder: (context, _) {
         return MaterialApp(
+          navigatorKey: _navigatorKey,
           title: 'Bulk Clip Trimmer',
           theme: _appState.isDarkMode ? ThemeData.dark() : ThemeData.light(),
           debugShowCheckedModeBanner: false,

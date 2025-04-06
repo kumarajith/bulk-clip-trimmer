@@ -49,136 +49,106 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Flag for dark mode
   bool _isDarkMode = false;
-
+  
   /// Flag for showing jobs panel
-  bool _showJobsPanel = false;
+  bool _showJobsPanel = true;
   
   /// Width of the playlist panel
-  double _playlistPanelWidth = 300.0;
+  double _playlistPanelWidth = 300;
   
-  /// Subscription for trim jobs stream
-  late final StreamSubscription<List<TrimJob>> _trimJobsSubscription;
-
-  /// Debounce timer for trim jobs updates
-  Timer? _debounceTimer;
+  /// Subscription to trim jobs stream
+  StreamSubscription<List<TrimJob>>? _trimJobsSubscription;
+  
+  /// Listener for label folders changes
+  VoidCallback? _labelFoldersListener;
 
   /// Constructor
   AppStateProvider({required this.player}) {
-    // Load initial data
     _loadInitialData();
-
-    // Listen to player position changes
-    player.streams.position.listen((position) {
-      notifyListeners();
-    });
     
-    // Listen to label folder changes
-    _labelFolderService.labelFoldersNotifier.addListener(_onLabelFoldersChanged);
-    
-    // Listen to trim job changes
+    // Subscribe to trim jobs stream
     _trimJobsSubscription = _trimJobService.trimJobsStream.listen(_onTrimJobsChanged);
     
-    // Log app startup
-    _loggingService.info('AppStateProvider initialized');
+    // Subscribe to label folders changes
+    _labelFoldersListener = () {
+      _onLabelFoldersChanged();
+    };
+    _labelFolderService.labelFoldersNotifier.addListener(_labelFoldersListener!);
   }
   
   /// Handle label folders changes
   void _onLabelFoldersChanged() {
-    // Just notify listeners when label folders change
     notifyListeners();
   }
   
   /// Handle trim jobs changes
   void _onTrimJobsChanged(List<TrimJob> jobs) {
     _trimJobs = jobs;
-    
-    // Force a rebuild of the UI
     notifyListeners();
-    
-    // Schedule another update after a short delay to ensure animations are smooth
-    // This is especially important for progress updates
-    if (_debounceTimer?.isActive ?? false) {
-      _debounceTimer?.cancel();
-    }
-    
-    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
-      notifyListeners();
-    });
   }
-
+  
   /// Load initial data
   Future<void> _loadInitialData() async {
-    try {
-      await _loggingService.info('Loading initial application data');
-      
-      // Delete any existing trim jobs file
-      await _trimJobService.deleteStorageFile();
-      
-      // Load label folders
-      await _labelFolderService.loadLabelFolders();
-      
-      await _loggingService.info('Initial data loaded successfully');
-      notifyListeners();
-    } catch (e) {
-      await _loggingService.error('Error loading initial data', details: e.toString());
-    }
-  }
-
-  /// Get the list of videos (sorted by date descending)
-  List<VideoFile> get videos {
-    // Create a copy of the list to avoid modifying the original
-    final sortedVideos = List<VideoFile>.from(_videos);
+    // Load label folders
+    await _labelFolderService.loadLabelFolders();
     
-    // Sort by date descending (newest first)
-    sortedVideos.sort((a, b) {
-      if (a.dateModified == null && b.dateModified == null) return 0;
-      if (a.dateModified == null) return 1; // null dates go to the end
-      if (b.dateModified == null) return -1;
-      return b.dateModified!.compareTo(a.dateModified!); // descending order
-    });
-    
-    return sortedVideos;
+    // Process any existing jobs
+    _trimJobService.processJobs();
   }
-
-  /// Get the list of trim jobs
-  List<TrimJob> get trimJobs => List.unmodifiable(_trimJobs);
-
-  /// Get the list of label folders
-  List<LabelFolder> get labelFolders => _labelFolderService.labelFolders;
-
-  /// Get the current video
+  
+  /// Get videos
+  List<VideoFile> get videos => List.unmodifiable(_videos);
+  
+  /// Get current video
   VideoFile? get currentVideo => _currentVideo;
-
-  /// Get the current trim range
+  
+  /// Get trim range
   RangeValues? get trimRange => _trimRange;
-
-  /// Get the output file name
+  
+  /// Get output file name
   String get outputFileName => _outputFileName;
-
-  /// Get whether dark mode is enabled
+  
+  /// Get dark mode flag
   bool get isDarkMode => _isDarkMode;
-
-  /// Get whether jobs panel is shown
+  
+  /// Get show jobs panel flag
   bool get showJobsPanel => _showJobsPanel;
-
+  
   /// Get playlist panel width
   double get playlistPanelWidth => _playlistPanelWidth;
   
+  /// Get trim jobs
+  List<TrimJob> get trimJobs => _trimJobs;
+  
+  /// Get label folders
+  List<LabelFolder> get labelFolders => _labelFolderService.labelFolders;
+  
+  /// Check if there are any active jobs in progress
+  bool get hasActiveJobs {
+    // Check if there are any jobs with progress > 0 and < 1
+    return _trimJobs.any((job) => job.progress > 0 && job.progress < 1.0);
+  }
+  
   /// Set playlist panel width
   void setPlaylistPanelWidth(double width) {
-    // Ensure width is within reasonable bounds (200-500px)
-    _playlistPanelWidth = width.clamp(200.0, 500.0);
+    _playlistPanelWidth = width;
     notifyListeners();
   }
 
   /// Play a video
-  void playVideo(VideoFile video) {
+  Future<void> playVideo(VideoFile video) async {
     _currentVideo = video;
-    player.open(Media(video.filePath));
+    
+    // Reset trim range to null when changing videos
+    _trimRange = null;
+    
+    // Play the video
+    await player.open(Media(video.filePath));
+    
     _loggingService.info('Playing video', details: 'Path: ${video.filePath}');
     notifyListeners();
   }
-
+  
   /// Toggle play/pause
   void togglePlayPause() {
     if (player.state.playing) {
@@ -186,18 +156,19 @@ class AppStateProvider extends ChangeNotifier {
       _loggingService.info('Video paused');
     } else {
       player.play();
-      _loggingService.info('Video resumed');
+      _loggingService.info('Video playing');
     }
     notifyListeners();
   }
-
+  
   /// Set the trim range
   void setTrimRange(RangeValues range) {
     _trimRange = range;
-    _loggingService.info('Trim range set', details: 'Start: ${range.start}s, End: ${range.end}s');
+    _loggingService.info('Trim range set', 
+        details: 'Start: ${range.start}s, End: ${range.end}s');
     notifyListeners();
   }
-
+  
   /// Set the output file name
   void setOutputFileName(String name) {
     _outputFileName = name;
@@ -399,19 +370,22 @@ class AppStateProvider extends ChangeNotifier {
         
         notifyListeners();
       } else {
-        _loggingService.warning('No output folders selected for trim job');
+        _loggingService.error('Cannot add trim job', details: 'No output folders selected');
       }
     } catch (e) {
       _loggingService.error('Error adding trim job', details: e.toString());
     }
   }
-
+  
+  /// Dispose resources
   @override
   void dispose() {
-    player.dispose();
-    _labelFolderService.labelFoldersNotifier.removeListener(_onLabelFoldersChanged);
-    _trimJobsSubscription.cancel();
-    _loggingService.info('AppStateProvider disposed');
+    // Cancel subscriptions
+    _trimJobsSubscription?.cancel();
+    if (_labelFoldersListener != null) {
+      _labelFolderService.labelFoldersNotifier.removeListener(_labelFoldersListener!);
+    }
+    
     super.dispose();
   }
 }

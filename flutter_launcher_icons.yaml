@@ -1,0 +1,8 @@
+flutter_launcher_icons:
+  android: false
+  ios: false
+  web: false
+  windows:
+    generate: true
+    image_path: "assets/icons/video_icon.png"
+    icon_size: 48

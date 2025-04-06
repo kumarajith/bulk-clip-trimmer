@@ -14,6 +14,7 @@
 ; General settings
 Name "${APPNAME}"
 OutFile "standalone\${APPNAME}.exe"
+Icon "assets\\icons\\video_icon_multi_res.ico"
 Unicode true
 SetCompressor /SOLID lzma
 

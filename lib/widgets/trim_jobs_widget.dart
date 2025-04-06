@@ -52,11 +52,24 @@ class TrimJobsWidget extends StatelessWidget {
                 const SizedBox(height: 12.0),
                 const Divider(height: 1),
                 const SizedBox(height: 8.0),
-                for (final job in trimJobs)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: _buildJobItem(context, job),
+                // Wrap the list of jobs in a fixed-height container with scrolling
+                Container(
+                  height: 300, // Fixed height for the jobs list
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.4, // Maximum 40% of screen height
                   ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (final job in trimJobs)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8.0),
+                            child: _buildJobItem(context, job),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
