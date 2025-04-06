@@ -1,5 +1,6 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as path;
 import '../providers/app_state_provider.dart';
 import '../models/trim_job.dart';
 
@@ -67,6 +68,10 @@ class TrimJobsWidget extends StatelessWidget {
   Widget _buildJobItem(BuildContext context, TrimJob job) {
     final theme = Theme.of(context);
     
+    // Extract filename from path
+    final fileName = job.filePath.split(Platform.pathSeparator).last;
+    final jobType = job.audioOnly ? 'Audio' : 'Video';
+    
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
@@ -79,41 +84,17 @@ class TrimJobsWidget extends StatelessWidget {
         children: [
           Row(
             children: [
-              // Status icon
-              Container(
-                width: 24.0,
-                height: 24.0,
-                decoration: BoxDecoration(
-                  color: job.error != null
-                      ? theme.colorScheme.error
-                      : job.progress >= 1.0
-                          ? Colors.green
-                          : theme.colorScheme.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Icon(
-                    job.error != null
-                        ? Icons.error
-                        : job.progress >= 1.0
-                            ? Icons.check
-                            : Icons.hourglass_bottom,
-                    color: Colors.white,
-                    size: 16.0,
-                  ),
-                ),
-              ),
-              SizedBox(width: 12.0),
-              // Filename
               Expanded(
                 child: Text(
-                  path.basename(job.filePath),
-                  style: theme.textTheme.bodyMedium?.copyWith(
+                  '$fileName ($jobType)',
+                  style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (job.error != null)
+                const Icon(Icons.error_outline, color: Colors.red),
             ],
           ),
           SizedBox(height: 8.0),

@@ -389,8 +389,10 @@ class AppStateProvider extends ChangeNotifier {
         _loggingService.info('Trim jobs added', 
           details: 'Created ${jobs.length} jobs for file: ${_currentVideo!.filePath}');
         
-        // Start processing jobs
-        _trimJobService.processJobs(jobs);
+        // Add jobs to the service and let it process them
+        for (final job in jobs) {
+          _trimJobService.addTrimJob(job);
+        }
         
         // Reset form
         _outputFileName = '';

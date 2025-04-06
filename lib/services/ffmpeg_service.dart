@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import '../models/trim_job.dart';
 import 'bundled_ffmpeg_service.dart';
@@ -20,23 +21,29 @@ class FFmpegService {
   /// Logging service
   final _loggingService = LoggingService();
   
-  /// Store FFmpeg output for debugging
+  /// Store FFmpeg output logs for debugging
   final Map<String, StringBuffer> _ffmpegOutputLogs = {};
 
-  /// Store the highest progress we've seen for each job to prevent going backwards
-  final Map<String, double> _highestProgressValues = {};
-
-  /// Internal constructor
-  FFmpegService._internal() {
-    // Check if FFmpeg is available when service is created
-    checkFFmpegAvailability();
-  }
+  /// Map of active FFmpeg processes by job ID
+  final Map<String, Process> _activeProcesses = {};
+  
+  /// Map of temporary directories by job ID
+  final Map<String, Directory> _tempDirs = {};
+  
+  /// Map of progress timers by job ID
+  final Map<String, Timer> _progressTimers = {};
 
   /// Whether FFmpeg is available
   bool _isFFmpegAvailable = false;
   
   /// Get whether FFmpeg is available
   bool get isFFmpegAvailable => _isFFmpegAvailable;
+
+  /// Internal constructor
+  FFmpegService._internal() {
+    // Check if FFmpeg is available when service is created
+    checkFFmpegAvailability();
+  }
 
   /// Check if FFmpeg is available
   Future<bool> checkFFmpegAvailability() async {
@@ -76,13 +83,12 @@ class FFmpegService {
       
       // Check if FFmpeg is available
       if (!_isFFmpegAvailable && !await checkFFmpegAvailability()) {
-        final errorMsg = 'FFmpeg is not available. Please ensure ffmpeg.exe is in the assets/bin directory. '
-          'You can download FFmpeg from https://ffmpeg.org/download.html (Windows builds).';
+        final errorMsg = 'FFmpeg is not available. Please ensure ffmpeg.exe is in the assets/bin directory.';
         await _loggingService.error('FFmpeg not available', details: errorMsg);
         throw Exception(errorMsg);
       }
 
-      // Get the FFprobe executable path directly from BundledFFmpegService
+      // Get the FFprobe executable path
       String ffprobePath;
       try {
         ffprobePath = await _bundledFFmpegService.getFFprobePath();
@@ -96,7 +102,6 @@ class FFmpegService {
         }
         await _loggingService.info('ffprobe.exe exists, size: ${await ffprobeFile.length()} bytes');
       } catch (e) {
-        // If bundled FFprobe fails, provide a clear error message
         final errorMsg = 'FFprobe is not available: ${e.toString()}. '
           'Please ensure ffprobe.exe is in the assets/bin directory.';
         await _loggingService.error('FFprobe not available', details: errorMsg);
@@ -138,38 +143,77 @@ class FFmpegService {
     }
   }
 
-  /// Process a trim job using FFmpeg
-  /// 
-  /// Returns a stream of progress updates (0.0 to 1.0)
+  /// Process a trim job and return a stream of progress updates
   Stream<double> processTrimJob(TrimJob job) {
+    final jobId = job.id ?? _generateJobId(); // Use the job ID from the TrimJob object or generate a new one
     final controller = StreamController<double>();
     
-    // Generate a unique job ID for tracking progress
-    final jobId = '${DateTime.now().millisecondsSinceEpoch}_${job.filePath.hashCode}';
-    
-    // Initialize progress tracking for this job
-    _highestProgressValues[jobId] = 0.0;
-    
-    // Log the job details
-    _loggingService.info('Starting trim job', 
-        details: 'File: ${job.filePath}\n' +
-                'Start: ${_formatDuration(job.startDuration)} (${job.startTime} sec)\n' +
-                'End: ${_formatDuration(job.endDuration)} (${job.endTime} sec)\n' +
-                'Output: ${job.outputFileName}\n' +
-                'Folders: ${job.outputFolders.join(', ')}\n' +
-                'Audio only: ${job.audioOnly}');
-    
-    // Process the job in a separate isolate to avoid blocking the UI
-    _processTrimJobInternal(job, controller, jobId).catchError((error) {
-      _loggingService.error('Error processing trim job', details: error.toString());
-      controller.addError(error);
+    _processTrimJobInternal(job, controller, jobId).then((_) {
+      if (!controller.isClosed) {
+        controller.add(1.0);
+        _loggingService.info('Trim job completed successfully', 
+          details: 'ID: $jobId, Path: ${job.filePath}');
+      }
+    }).catchError((error) {
+      if (!controller.isClosed) {
+        _loggingService.error('Error processing trim job', details: error.toString());
+        controller.addError(error);
+      }
     }).whenComplete(() {
-      // Clean up progress tracking when job completes
-      _highestProgressValues.remove(jobId);
-      controller.close();
+      _cleanupResources(jobId);
+      if (!controller.isClosed) {
+        controller.close();
+      }
     });
     
     return controller.stream;
+  }
+
+  /// Cancel a specific FFmpeg process
+  Future<void> cancelProcess(String jobId) async {
+    await _loggingService.info('Attempting to cancel FFmpeg process', details: 'Job ID: $jobId');
+    
+    // Kill the process if it exists
+    final process = _activeProcesses[jobId];
+    if (process != null) {
+      try {
+        process.kill(ProcessSignal.sigterm);
+        await _loggingService.info('Sent termination signal to FFmpeg process', details: 'Job ID: $jobId');
+      } catch (e) {
+        await _loggingService.error('Failed to terminate FFmpeg process', details: 'Job ID: $jobId, Error: $e');
+      }
+    }
+    
+    // Clean up resources
+    _cleanupResources(jobId);
+  }
+
+  /// Clean up resources for a job
+  Future<void> _cleanupResources(String jobId) async {
+    // Cancel progress timer if it exists
+    final timer = _progressTimers.remove(jobId);
+    timer?.cancel();
+    
+    // Remove process reference
+    _activeProcesses.remove(jobId);
+    
+    // Clean up temp directory
+    final tempDir = _tempDirs.remove(jobId);
+    if (tempDir != null) {
+      try {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+          await _loggingService.debug('Deleted temporary directory', details: 'Path: ${tempDir.path}');
+        }
+      } catch (e) {
+        await _loggingService.error('Failed to delete temporary directory', details: 'Path: ${tempDir.path}, Error: $e');
+      }
+    }
+    
+    // Clean up logs
+    _ffmpegOutputLogs.remove(jobId);
+    
+    await _loggingService.info('Cleaned up resources for job', details: 'Job ID: $jobId');
   }
 
   /// Internal method to process a trim job
@@ -179,21 +223,21 @@ class FFmpegService {
     String jobId
   ) async {
     try {
+      // Initialize output log
+      _ffmpegOutputLogs[jobId] = StringBuffer();
+      
       // Check if FFmpeg is available
       if (!_isFFmpegAvailable && !await checkFFmpegAvailability()) {
         throw Exception(
-          'FFmpeg is not available. Please ensure ffmpeg.exe is in the assets/bin directory. '
-          'You can download FFmpeg from https://ffmpeg.org/download.html (Windows builds).'
+          'FFmpeg is not available. Please ensure ffmpeg.exe is in the assets/bin directory.'
         );
       }
 
       // Get the FFmpeg executable path
-      String ffmpegCommand;
+      String ffmpegPath;
       try {
-        // Try to get the bundled FFmpeg path
-        ffmpegCommand = await _bundledFFmpegService.getFFmpegPath();
+        ffmpegPath = await _bundledFFmpegService.getFFmpegPath();
       } catch (e) {
-        // If bundled FFmpeg fails, provide a clear error message
         final errorMsg = 'FFmpeg is not available: ${e.toString()}. '
           'Please ensure ffmpeg.exe is in the assets/bin directory.';
         await _loggingService.error('FFmpeg not available', details: errorMsg);
@@ -212,36 +256,31 @@ class FFmpegService {
         throw Exception('Could not determine video duration for: ${job.filePath}');
       }
 
-      // Validate trim points are within video duration
-      final videoDurationMs = videoDuration.inMilliseconds;
-      final videoDurationSec = videoDurationMs / 1000.0;
+      // Validate trim points
+      final videoDurationSec = videoDuration.inMilliseconds / 1000.0;
       final startTimeSec = job.startTime;
       final endTimeSec = job.endTime;
 
-      // Log the trim job start with video duration info
+      // Log the trim job start
       await _loggingService.info('Starting trim job', details: 
         'File: ${job.filePath}\n'
         'Video Duration: ${_formatDuration(videoDuration)} (${videoDurationSec.toStringAsFixed(3)} sec)\n'
         'Start: ${_formatDuration(job.startDuration)} (${startTimeSec.toStringAsFixed(3)} sec)\n'
-        'End: ${_formatDuration(job.endDuration)} (${endTimeSec.toStringAsFixed(3)} sec)\n'
-        'Output: ${job.outputFileName}\n'
-        'Folders: ${job.outputFolders.join(', ')}\n'
-        'Audio only: ${job.audioOnly}');
+        'End: ${_formatDuration(job.endDuration)} (${endTimeSec.toStringAsFixed(3)} sec)');
     
-      // Validate start time is within video duration
+      // Validate start time
       if (startTimeSec >= videoDurationSec) {
         throw Exception('Start time (${startTimeSec.toStringAsFixed(3)} sec) ' +
                         'exceeds video duration (${videoDurationSec.toStringAsFixed(3)} sec)');
       }
 
-      // Validate end time is within video duration and after start time
+      // Validate and potentially adjust end time
       TrimJob validatedJob = job;
       if (endTimeSec > videoDurationSec) {
         await _loggingService.warning(
           'End time exceeds video duration, clamping to video end', 
           details: 'End time: ${endTimeSec.toStringAsFixed(3)} sec, ' +
                   'Video duration: ${videoDurationSec.toStringAsFixed(3)} sec');
-        // Clamp end time to video duration
         validatedJob = job.copyWith(endTime: videoDurationSec);
       }
 
@@ -250,166 +289,175 @@ class FFmpegService {
         throw Exception('End time must be greater than start time');
       }
 
-      // Create a unique ID for this job to track its output
-      _ffmpegOutputLogs[jobId] = StringBuffer();
-
-      // Create a temporary file for progress output
+      // Create temporary directory for progress tracking
       final tempDir = await Directory.systemTemp.createTemp('ffmpeg_progress');
+      _tempDirs[jobId] = tempDir;
       final progressFile = File('${tempDir.path}/progress.txt');
       
       // Send initial progress update
-      controller.add(0.01); // Start with 1% to show immediate visual feedback
+      controller.add(0.01);
 
+      // Process each output folder
       for (final folder in validatedJob.outputFolders) {
-        var outputFilePath = '$folder/${validatedJob.outputFileName}';
-        
-        // Add extension if not already present
-        if (!validatedJob.audioOnly && !outputFilePath.toLowerCase().endsWith('.mp4')) {
-          outputFilePath += '.mp4';
-        } else if (validatedJob.audioOnly && !outputFilePath.toLowerCase().endsWith('.m4a')) {
-          outputFilePath += '.m4a';
-        }
-        
-        // Create output directory if it doesn't exist
-        final directory = Directory(folder);
-        if (!await directory.exists()) {
-          await directory.create(recursive: true);
-          await _loggingService.info('Created output directory', details: folder);
-        }
-
-        // Calculate duration in seconds (clamped to video duration)
-        final durationInSeconds = validatedJob.endTime - validatedJob.startTime;
-        final durationMs = (durationInSeconds * 1000).round(); // Fix: Round to nearest integer
-        
-        // Build FFmpeg command
-        final List<String> commandArgs = [
-          '-y', // Automatically overwrite output file if it exists
-          '-i', validatedJob.filePath,
-          '-ss', _formatDuration(validatedJob.startDuration),
-          '-t', _formatDuration(Duration(milliseconds: durationMs)),
-          '-progress', progressFile.path, // Add progress output to file
-          '-stats', // Add more detailed stats
-        ];
-        
-        // Add audio-only flag if needed
-        if (validatedJob.audioOnly) {
-          commandArgs.addAll(['-vn', '-acodec', 'aac', '-b:a', '192k']);
-        } else {
-          // For video, use a more compatible encoding method instead of just copying
-          commandArgs.addAll([
-            '-c:v', 'libx264', // Use H.264 codec for video
-            '-preset', 'medium', // Balance between quality and speed
-            '-c:a', 'aac', // Use AAC for audio
-            '-b:a', '128k', // Audio bitrate
-            '-pix_fmt', 'yuv420p', // Standard pixel format for compatibility
-          ]);
-        }
-        
-        // Add output file path
-        commandArgs.add(outputFilePath);
-
-        final commandString = '$ffmpegCommand ${commandArgs.join(' ')}';
-        await _loggingService.info('Running FFmpeg command', details: commandString);
-        _ffmpegOutputLogs[jobId]!.writeln('Command: $commandString');
-
-        // Start FFmpeg process
-        final process = await Process.start(ffmpegCommand, commandArgs);
-
-        // Set up a timer to read the progress file periodically
-        Timer? progressTimer;
-        progressTimer = Timer.periodic(Duration(milliseconds: 50), (timer) async {
-          try {
-            if (await progressFile.exists()) {
-              try {
-                final content = await progressFile.readAsString();
-                _parseProgressFile(content, validatedJob.startTime, validatedJob.endTime, controller, validatedJob.audioOnly, jobId);
-                
-                // Check if process is complete
-                if (content.contains('progress=end')) {
-                  _loggingService.debug('Progress file indicates completion', details: 'Found progress=end');
-                  timer.cancel();
-                  progressTimer = null;
-                  // Ensure we send 100% progress
-                  controller.add(1.0);
-                }
-              } catch (e) {
-                _loggingService.error('Error reading progress file', details: e.toString());
-              }
-            }
-          } catch (e) {
-            // Ignore file access errors
-          }
-        });
-
-        // Handle stdout - just log it, don't use for progress
-        process.stdout.transform(utf8.decoder).listen((data) {
-          _ffmpegOutputLogs[jobId]!.writeln('STDOUT: $data');
-          _loggingService.debug('FFmpeg stdout', details: data);
-        });
-
-        // Handle stderr - just log it, don't use for progress
-        process.stderr.transform(utf8.decoder).listen((data) {
-          _ffmpegOutputLogs[jobId]!.writeln('STDERR: $data');
-          _loggingService.debug('FFmpeg stderr', details: data);
-        });
-
-        // Wait for process to complete
-        final exitCode = await process.exitCode;
-        
-        // Cancel timer if still active
-        progressTimer?.cancel();
-        
-        // Clean up progress file and directory
-        try {
-          if (await progressFile.exists()) {
-            await progressFile.delete();
-          }
-          if (await tempDir.exists()) {
-            await tempDir.delete(recursive: true);
-          }
-        } catch (e) {
-          _loggingService.error('Error cleaning up progress files', details: e.toString());
-        }
-        
-        // Check if output file exists and has content
-        final outputFile = File(outputFilePath);
-        final fileExists = await outputFile.exists();
-        final fileSize = fileExists ? await outputFile.length() : 0;
-        
-        _ffmpegOutputLogs[jobId]!.writeln('Exit code: $exitCode');
-        _ffmpegOutputLogs[jobId]!.writeln('Output file exists: $fileExists');
-        _ffmpegOutputLogs[jobId]!.writeln('Output file size: $fileSize bytes');
-        
-        if (exitCode != 0) {
-          final errorMessage = 'FFmpeg exited with code $exitCode';
-          await _loggingService.error('FFmpeg process failed', 
-              details: 'Exit code: $exitCode\nOutput log:\n${_ffmpegOutputLogs[jobId]!.toString()}');
-          throw Exception(errorMessage);
-        }
-        
-        if (fileSize < 1000) { // Less than 1KB is suspicious
-          final errorMessage = 'Output file is too small (${fileSize} bytes), likely corrupted';
-          await _loggingService.error('FFmpeg output file too small', 
-              details: '$errorMessage\nOutput log:\n${_ffmpegOutputLogs[jobId]!.toString()}');
-          throw Exception(errorMessage);
-        }
-        
-        await _loggingService.info('FFmpeg process completed successfully', 
-            details: 'Output: $outputFilePath\nFile size: $fileSize bytes');
+        await _processForFolder(
+          validatedJob, 
+          folder, 
+          ffmpegPath, 
+          progressFile, 
+          controller, 
+          jobId
+        );
       }
       
       // All folders processed successfully
-      controller.add(1.0);
-      await _loggingService.info('Trim job completed successfully', 
-          details: 'File: ${job.filePath}\nFull log:\n${_ffmpegOutputLogs[jobId]!.toString()}');
+      await _loggingService.info('All folders processed for job', details: 'Job ID: $jobId');
       
-      // Clean up log after successful completion
-      _ffmpegOutputLogs.remove(jobId);
     } catch (e) {
-      await _loggingService.error('Error in _processTrimJobInternal', details: e.toString());
-      controller.addError(e);
-      rethrow;
+      await _loggingService.error('Error in _processTrimJobInternal', details: 'Job ID: $jobId, Error: $e');
+      throw e;
     }
+  }
+
+  /// Process the job for a specific output folder
+  Future<void> _processForFolder(
+    TrimJob job,
+    String folder,
+    String ffmpegPath,
+    File progressFile,
+    StreamController<double> controller,
+    String jobId
+  ) async {
+    var outputFilePath = '$folder/${job.outputFileName}';
+    
+    // Add extension if not already present
+    if (!job.audioOnly && !outputFilePath.toLowerCase().endsWith('.mp4')) {
+      outputFilePath += '.mp4';
+    } else if (job.audioOnly && !outputFilePath.toLowerCase().endsWith('.m4a')) {
+      outputFilePath += '.m4a';
+    }
+    
+    // Create output directory if it doesn't exist
+    final directory = Directory(folder);
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+      await _loggingService.info('Created output directory', details: folder);
+    }
+
+    // Calculate duration in seconds
+    final durationInSeconds = job.endTime - job.startTime;
+    final durationMs = (durationInSeconds * 1000).round();
+    
+    // Build FFmpeg command
+    final List<String> commandArgs = [
+      '-y',
+      '-i', job.filePath,
+      '-ss', _formatDuration(job.startDuration),
+      '-t', _formatDuration(Duration(milliseconds: durationMs)),
+      '-progress', progressFile.path,
+      '-stats',
+    ];
+    
+    // Add audio-only or video encoding options
+    if (job.audioOnly) {
+      commandArgs.addAll(['-vn', '-acodec', 'aac', '-b:a', '192k']);
+    } else {
+      commandArgs.addAll([
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-pix_fmt', 'yuv420p',
+      ]);
+    }
+    
+    // Add output file path
+    commandArgs.add(outputFilePath);
+
+    final commandString = '$ffmpegPath ${commandArgs.join(' ')}';
+    await _loggingService.info('Running FFmpeg command', details: commandString);
+    _ffmpegOutputLogs[jobId]!.writeln('Command: $commandString');
+
+    // Start FFmpeg process
+    final process = await Process.start(ffmpegPath, commandArgs);
+    _activeProcesses[jobId] = process;
+
+    // Set up progress timer
+    final progressTimer = Timer.periodic(Duration(milliseconds: 50), (timer) async {
+      try {
+        if (await progressFile.exists()) {
+          final content = await progressFile.readAsString();
+          _parseProgressFile(
+            content, 
+            job.startTime, 
+            job.endTime, 
+            controller, 
+            job.audioOnly, 
+            jobId
+          );
+          
+          // Check for completion
+          if (content.contains('progress=end')) {
+            timer.cancel();
+            await _loggingService.debug('Progress file indicates completion', details: 'Job ID: $jobId');
+          }
+        }
+      } catch (e) {
+        // Ignore file access errors
+      }
+    });
+    _progressTimers[jobId] = progressTimer;
+
+    // Handle stdout
+    process.stdout.transform(utf8.decoder).listen((data) {
+      _ffmpegOutputLogs[jobId]!.writeln('STDOUT: $data');
+      _loggingService.debug('FFmpeg stdout', details: 'Job ID: $jobId, Data: $data');
+    });
+
+    // Handle stderr
+    process.stderr.transform(utf8.decoder).listen((data) {
+      _ffmpegOutputLogs[jobId]!.writeln('STDERR: $data');
+      _loggingService.debug('FFmpeg stderr', details: 'Job ID: $jobId, Data: $data');
+    });
+
+    // Wait for process to complete
+    final exitCode = await process.exitCode;
+    
+    // Cancel timer
+    progressTimer.cancel();
+    _progressTimers.remove(jobId);
+    
+    // Handle audio-only progress update
+    if (job.audioOnly) {
+      controller.add(0.99);
+      await _loggingService.info('Audio job process completed', details: 'Job ID: $jobId, Exit code: $exitCode');
+    }
+    
+    // Validate output
+    final outputFile = File(outputFilePath);
+    final fileExists = await outputFile.exists();
+    final fileSize = fileExists ? await outputFile.length() : 0;
+    
+    _ffmpegOutputLogs[jobId]!.writeln('Exit code: $exitCode');
+    _ffmpegOutputLogs[jobId]!.writeln('Output file exists: $fileExists');
+    _ffmpegOutputLogs[jobId]!.writeln('Output file size: $fileSize bytes');
+    
+    // Check for errors
+    if (exitCode != 0) {
+      final errorMessage = 'FFmpeg exited with code $exitCode';
+      await _loggingService.error('FFmpeg process failed', 
+          details: 'Job ID: $jobId, Exit code: $exitCode\nOutput log:\n${_ffmpegOutputLogs[jobId]!.toString()}');
+      throw Exception(errorMessage);
+    }
+    
+    if (fileSize < 1000) {
+      final errorMessage = 'Output file is too small (${fileSize} bytes), likely corrupted';
+      await _loggingService.error('FFmpeg output file too small', 
+          details: 'Job ID: $jobId, $errorMessage\nOutput log:\n${_ffmpegOutputLogs[jobId]!.toString()}');
+      throw Exception(errorMessage);
+    }
+    
+    await _loggingService.info('FFmpeg process completed for folder', 
+        details: 'Job ID: $jobId, Output: $outputFilePath, File size: $fileSize bytes');
   }
 
   /// Parse progress information from progress file
@@ -422,52 +470,42 @@ class FFmpegService {
     String jobId
   ) {
     try {
-      _loggingService.debug('Parsing progress file', 
-          details: 'Job: $jobId, Audio only: $isAudioOnly');
-      
-      // Check for progress=end which indicates completion
-      if (content.contains('progress=end')) {
-        _loggingService.info('FFmpeg processing complete');
-        controller.add(1.0); // 100% complete
+      // For audio-only jobs, use simplified progress reporting
+      if (isAudioOnly) {
+        if (content.contains('progress=continue')) {
+          controller.add(0.5);
+        }
         return;
       }
       
-      // Calculate the target duration (what we're trying to encode)
+      // Calculate target duration
       final targetDurationSec = endTimeSeconds - startTimeSeconds;
-      _loggingService.debug('Target duration', details: '${targetDurationSec.toStringAsFixed(3)}s');
       
-      // Extract current output time from progress file
+      // Try to get time from progress info
       double? outputTimeSec = _extractTimeFromProgress(content);
       
       if (outputTimeSec != null && outputTimeSec > 0) {
-        _loggingService.debug('Raw output time', details: '${outputTimeSec.toStringAsFixed(3)}s');
-        
-        // Calculate progress as a percentage of the target duration
+        // Calculate progress as a percentage of target duration
         final progress = (outputTimeSec / targetDurationSec).clamp(0.0, 0.99);
-        _loggingService.info('Progress update', 
-            details: 'Time: ${outputTimeSec.toStringAsFixed(2)}s / ${targetDurationSec.toStringAsFixed(2)}s = ${(progress * 100).toStringAsFixed(1)}%');
-        controller.add(progress);
-      } else {
-        // If we can't determine time, check if we have frame data at least
-        final frameRegex = RegExp(r'frame=\s*([0-9]+)');
-        final frameMatches = frameRegex.allMatches(content).toList();
         
-        if (frameMatches.isNotEmpty && !content.contains('frame=0')) {
-          // We have some frame data, so processing has started
-          // Use a very small progress value to indicate we're just starting
-          controller.add(0.01); // 1% progress
-          _loggingService.info('Early progress', details: 'Processing started, minimal progress');
+        if ((progress * 100).round() % 5 == 0) { // Log every 5%
+          _loggingService.info('Progress update', 
+              details: 'Job ID: $jobId, Time: ${outputTimeSec.toStringAsFixed(2)}s / ${targetDurationSec.toStringAsFixed(2)}s = ${(progress * 100).toStringAsFixed(1)}%');
         }
-        // Otherwise, don't send any progress update
+        
+        controller.add(progress);
+      } else if (content.contains('frame=') && !content.contains('frame=0')) {
+        // Processing has started but we don't know exact progress
+        controller.add(0.01);
       }
     } catch (e) {
-      _loggingService.error('Error parsing FFmpeg progress file', details: e.toString());
+      _loggingService.error('Error parsing FFmpeg progress', details: 'Job ID: $jobId, Error: $e');
     }
   }
-  
+
   /// Extract time in seconds from progress file content
   double? _extractTimeFromProgress(String content) {
-    // Try to get time from out_time_ms (milliseconds)
+    // Try microseconds first (most accurate)
     final msRegex = RegExp(r'out_time_ms=([0-9]+)');
     final msMatches = msRegex.allMatches(content).toList();
     
@@ -477,12 +515,11 @@ class FFmpegService {
       final timeMs = int.tryParse(msValue);
       
       if (timeMs != null && timeMs > 0) {
-        // FFmpeg uses microseconds in out_time_ms despite the name
         return timeMs / 1000000.0; // Convert microseconds to seconds
       }
     }
     
-    // If out_time_ms didn't work, try out_time (HH:MM:SS.mmm format)
+    // Try formatted time as fallback
     final timeRegex = RegExp(r'out_time=([0-9]+):([0-9]+):([0-9]+\.[0-9]+)');
     final timeMatches = timeRegex.allMatches(content).toList();
     
@@ -511,5 +548,41 @@ class FFmpegService {
     final milliseconds = (duration.inMilliseconds % 1000).toString().padLeft(3, '0');
     
     return '$hours:$minutes:$seconds.$milliseconds';
+  }
+  
+  /// Dispose all resources
+  void dispose() {
+    // Cancel all active processes
+    for (final entry in _activeProcesses.entries) {
+      try {
+        entry.value.kill(ProcessSignal.sigterm);
+      } catch (e) {
+        // Ignore errors when killing processes
+      }
+    }
+    
+    // Cancel all timers
+    for (final timer in _progressTimers.values) {
+      timer.cancel();
+    }
+    
+    // Clean up all temp directories
+    for (final tempDir in _tempDirs.values) {
+      try {
+        tempDir.deleteSync(recursive: true);
+      } catch (e) {
+        // Ignore errors when deleting temp directories
+      }
+    }
+    
+    // Clear all maps
+    _activeProcesses.clear();
+    _progressTimers.clear();
+    _tempDirs.clear();
+    _ffmpegOutputLogs.clear();
+  }
+
+  String _generateJobId() {
+    return '${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(1000000)}';
   }
 }

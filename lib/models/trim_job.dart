@@ -1,5 +1,8 @@
 /// Model class representing a video trimming job
 class TrimJob {
+  /// Unique identifier for the trim job
+  final String? id;
+  
   /// The full path to the source video file
   final String filePath;
   
@@ -37,6 +40,7 @@ class TrimJob {
   
   /// Constructor
   TrimJob({
+    this.id,
     required this.filePath,
     required this.startTime,
     required this.endTime,
@@ -49,6 +53,7 @@ class TrimJob {
   
   /// Create a copy with updated properties
   TrimJob copyWith({
+    String? id,
     String? filePath,
     double? startTime,
     double? endTime,
@@ -59,6 +64,7 @@ class TrimJob {
     String? error,
   }) {
     return TrimJob(
+      id: id ?? this.id,
       filePath: filePath ?? this.filePath,
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
@@ -73,6 +79,7 @@ class TrimJob {
   /// Create a TrimJob from a map
   factory TrimJob.fromMap(Map<String, dynamic> map) {
     return TrimJob(
+      id: map['id'] as String?,
       filePath: map['fileName'] as String,
       startTime: map['start'] as double,
       endTime: map['end'] as double,
@@ -87,6 +94,7 @@ class TrimJob {
   /// Convert TrimJob to a map
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'fileName': filePath,
       'start': startTime,
       'end': endTime,
