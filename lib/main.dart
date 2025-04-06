@@ -4,10 +4,23 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import 'providers/app_state_provider.dart';
 import 'screens/main_screen.dart';
+import 'services/app_directory_service.dart';
+import 'services/trim_job_service.dart';
 
-void main() {
+void main() async {
+  // Ensure Flutter is initialized
+  WidgetsFlutterBinding.ensureInitialized();
+  
   // Initialize MediaKit
   MediaKit.ensureInitialized();
+  
+  // Initialize app directories
+  final appDirectoryService = AppDirectoryService();
+  await appDirectoryService.initialize();
+  
+  // Delete any existing trim jobs file to ensure a clean slate on startup
+  final trimJobService = TrimJobService();
+  await trimJobService.deleteStorageFile();
   
   // Run the app
   runApp(const MyApp());

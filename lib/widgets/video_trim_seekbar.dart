@@ -65,7 +65,7 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
       _handleRight = 0.8 * duration; // 80% of total duration
       // Notify parent about initial trim range
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
+        widget.onTrimChange(RangeValues(_handleLeft / 1000, _handleRight / 1000));
       });
     }
     _position = widget.position.inMilliseconds.toDouble();
@@ -168,7 +168,9 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     setState(() {
                       _handleLeft = ((_handleLeft + (details.delta.dx / width) * duration)
                           .clamp(0.0, _handleRight - 1000)); // Ensure minimum 1 second gap
-                      widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
+                      
+                      // Pass the trim range values in seconds to the parent
+                      widget.onTrimChange(RangeValues(_handleLeft / 1000, _handleRight / 1000));
                     });
                   },
                   child: Container(
@@ -194,7 +196,9 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     setState(() {
                       _handleRight = ((_handleRight + (details.delta.dx / width) * duration)
                           .clamp(_handleLeft + 1000, duration)); // Ensure minimum 1 second gap
-                      widget.onTrimChange(RangeValues(_handleLeft, _handleRight));
+                      
+                      // Pass the trim range values in seconds to the parent
+                      widget.onTrimChange(RangeValues(_handleLeft / 1000, _handleRight / 1000));
                     });
                   },
                   child: Container(

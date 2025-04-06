@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -8,6 +10,7 @@ import '../services/video_service.dart';
 import '../services/trim_job_service.dart';
 import '../services/label_folder_service.dart';
 import '../services/logging_service.dart';
+import '../services/ffmpeg_service.dart';
 
 /// Provider for managing application state
 class AppStateProvider extends ChangeNotifier {
@@ -25,6 +28,9 @@ class AppStateProvider extends ChangeNotifier {
   
   /// Logging service
   final _loggingService = LoggingService();
+
+  /// FFmpeg service
+  final _ffmpegService = FFmpegService();
 
   /// List of videos in the playlist
   final List<VideoFile> _videos = [];
@@ -49,6 +55,9 @@ class AppStateProvider extends ChangeNotifier {
   
   /// Width of the playlist panel
   double _playlistPanelWidth = 300.0;
+  
+  /// Subscription for trim jobs stream
+  late final StreamSubscription<List<TrimJob>> _trimJobsSubscription;
 
   /// Constructor
   AppStateProvider({required this.player}) {
@@ -63,6 +72,9 @@ class AppStateProvider extends ChangeNotifier {
     // Listen to label folder changes
     _labelFolderService.labelFoldersNotifier.addListener(_onLabelFoldersChanged);
     
+    // Listen to trim job changes
+    _trimJobsSubscription = _trimJobService.trimJobsStream.listen(_onTrimJobsChanged);
+    
     // Log app startup
     _loggingService.info('AppStateProvider initialized');
   }
@@ -72,18 +84,27 @@ class AppStateProvider extends ChangeNotifier {
     // Just notify listeners when label folders change
     notifyListeners();
   }
+  
+  /// Handle trim jobs changes
+  void _onTrimJobsChanged(List<TrimJob> jobs) {
+    // Update our local list
+    _trimJobs.clear();
+    _trimJobs.addAll(jobs);
+    
+    // Notify listeners
+    notifyListeners();
+  }
 
   /// Load initial data
   Future<void> _loadInitialData() async {
     try {
       await _loggingService.info('Loading initial application data');
       
+      // Delete any existing trim jobs file
+      await _trimJobService.deleteStorageFile();
+      
       // Load label folders
       await _labelFolderService.loadLabelFolders();
-      
-      // Load trim jobs
-      final jobs = await _trimJobService.loadTrimJobs();
-      _trimJobs.addAll(jobs);
       
       await _loggingService.info('Initial data loaded successfully');
       notifyListeners();
@@ -273,19 +294,78 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   /// Add a trim job
-  void addTrimJob() {
-    if (_currentVideo != null && _trimRange != null && _outputFileName.isNotEmpty) {
-      final selectedFolders = _labelFolderService.getSelectedLabelFolders();
-      
+  Future<void> addTrimJob() async {
+    if (_currentVideo == null || _trimRange == null) {
+      _loggingService.error('Cannot add trim job', details: 'No video or trim range selected');
+      return;
+    }
+
+    try {
+      // Get selected folders
+      final selectedFolders = _labelFolderService.labelFolders
+          .where((folder) => folder.isSelected)
+          .toList();
+
+      if (selectedFolders.isEmpty) {
+        _loggingService.error('Cannot add trim job', details: 'No output folders selected');
+        return;
+      }
+
       if (selectedFolders.isNotEmpty) {
+        // Validate trim range against video duration
+        final videoDuration = await _ffmpegService.getVideoDuration(_currentVideo!.filePath);
+        if (videoDuration == null) {
+          _loggingService.error('Could not determine video duration', 
+              details: 'File: ${_currentVideo!.filePath}');
+          return;
+        }
+        
+        final videoDurationSeconds = videoDuration.inMilliseconds / 1000.0;
+        
+        // Log the current values for debugging
+        _loggingService.info('Trim range values', 
+            details: 'Range: ${_trimRange!.start} to ${_trimRange!.end}, ' +
+                    'Video duration: ${videoDurationSeconds}s');
+        
+        // Validate start time
+        if (_trimRange!.start >= videoDurationSeconds) {
+          _loggingService.error('Start time exceeds video duration', 
+              details: 'Start: ${_trimRange!.start}s, Video duration: ${videoDurationSeconds}s');
+          return;
+        }
+        
+        // Validate end time
+        double endTime = _trimRange!.end;
+        if (endTime > videoDurationSeconds) {
+          _loggingService.warning('End time exceeds video duration, clamping to video end', 
+              details: 'End: ${endTime}s, Video duration: ${videoDurationSeconds}s');
+          endTime = videoDurationSeconds;
+        }
+        
+        // Ensure minimum duration (at least 0.5 seconds)
+        if (endTime - _trimRange!.start < 0.5) {
+          _loggingService.error('Trim duration too short', 
+              details: 'Duration must be at least 0.5 seconds');
+          return;
+        }
+
         // Create a job for each selected folder
         final jobs = <TrimJob>[];
         
         for (final folder in selectedFolders) {
+          // The trim range values are already in seconds now
+          final startTimeSeconds = _trimRange!.start;
+          final endTimeSeconds = endTime;
+          
+          _loggingService.info('Creating trim job', 
+              details: 'Using time values in seconds: ' +
+                      'Start: ${startTimeSeconds}s, ' +
+                      'End: ${endTimeSeconds}s');
+          
           final job = TrimJob(
             filePath: _currentVideo!.filePath,
-            startTime: _trimRange!.start,
-            endTime: _trimRange!.end,
+            startTime: startTimeSeconds,
+            endTime: endTimeSeconds, // Use validated end time in seconds
             audioOnly: folder.audioOnly, // Use the folder's audioOnly setting
             outputFolders: [folder.folderPath], // One folder per job
             outputFileName: _outputFileName,
@@ -293,7 +373,6 @@ class AppStateProvider extends ChangeNotifier {
           );
           
           jobs.add(job);
-          _trimJobs.add(job);
         }
         
         _loggingService.info('Trim jobs added', 
@@ -309,22 +388,8 @@ class AppStateProvider extends ChangeNotifier {
       } else {
         _loggingService.warning('No output folders selected for trim job');
       }
-    } else {
-      _loggingService.warning('Cannot create trim job', 
-        details: 'Missing required data: ' +
-        (_currentVideo == null ? 'No video selected. ' : '') +
-        (_trimRange == null ? 'No trim range set. ' : '') +
-        (_outputFileName.isEmpty ? 'No output file name. ' : ''));
-    }
-  }
-
-  /// Update a trim job
-  void updateTrimJob(TrimJob job) {
-    final index = _trimJobs.indexWhere((j) => j == job);
-    if (index != -1) {
-      _trimJobs[index] = job;
-      _loggingService.info('Trim job updated', details: 'File: ${job.filePath}');
-      notifyListeners();
+    } catch (e) {
+      _loggingService.error('Error adding trim job', details: e.toString());
     }
   }
 
@@ -332,6 +397,7 @@ class AppStateProvider extends ChangeNotifier {
   void dispose() {
     player.dispose();
     _labelFolderService.labelFoldersNotifier.removeListener(_onLabelFoldersChanged);
+    _trimJobsSubscription.cancel();
     _loggingService.info('AppStateProvider disposed');
     super.dispose();
   }

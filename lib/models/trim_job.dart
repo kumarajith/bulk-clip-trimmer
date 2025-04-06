@@ -25,9 +25,11 @@ class TrimJob {
   String get sourceFilePath => filePath;
   
   /// Start time as a Duration
+  /// Note: startTime is already in seconds, so we convert to milliseconds for the Duration
   Duration get startDuration => Duration(milliseconds: (startTime * 1000).toInt());
   
   /// End time as a Duration
+  /// Note: endTime is already in seconds, so we convert to milliseconds for the Duration
   Duration get endDuration => Duration(milliseconds: (endTime * 1000).toInt());
   
   /// Error message if any

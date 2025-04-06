@@ -25,6 +25,7 @@ windows/ffmpeg/
 #.vscode/
 # FFmpeg executable
 assets/bin/ffmpeg.exe
+assets/bin/ffprobe.exe
 
 # Flutter/Dart/Pub related
 **/doc/api/

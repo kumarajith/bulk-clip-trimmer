@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import '../models/trim_job.dart';
@@ -54,9 +53,6 @@ class TrimJobService {
     
     _trimJobsController.add(_trimJobs);
     
-    // Save jobs to storage
-    await saveTrimJobs();
-    
     // Process each job
     for (final job in jobs) {
       if (job.progress < 1.0 && job.error == null) {
@@ -83,7 +79,6 @@ class TrimJobService {
         if (index != -1) {
           _trimJobs[index] = updatedJob;
           _trimJobsController.add(_trimJobs);
-          await saveTrimJobs();
         }
       }
       
@@ -109,7 +104,6 @@ class TrimJobService {
       if (index != -1) {
         _trimJobs[index] = updatedJob;
         _trimJobsController.add(_trimJobs);
-        await saveTrimJobs();
       }
       
       // Log the error
@@ -134,7 +128,6 @@ class TrimJobService {
     if (index != -1) {
       _trimJobs.removeAt(index);
       _trimJobsController.add(_trimJobs);
-      await saveTrimJobs();
       await _loggingService.info('Job cancelled', details: 'File: ${job.filePath}');
     }
   }
@@ -144,7 +137,6 @@ class TrimJobService {
     final completedCount = _trimJobs.where((job) => job.progress >= 1.0 || job.error != null).length;
     _trimJobs.removeWhere((job) => job.progress >= 1.0 || job.error != null);
     _trimJobsController.add(_trimJobs);
-    await saveTrimJobs();
     await _loggingService.info('Cleared completed jobs', details: 'Removed $completedCount jobs');
   }
 
@@ -153,49 +145,39 @@ class TrimJobService {
     final jobCount = _trimJobs.length;
     _trimJobs.clear();
     _trimJobsController.add(_trimJobs);
-    await saveTrimJobs();
     await _loggingService.info('Cleared all jobs', details: 'Removed $jobCount jobs');
   }
 
   /// Load trim jobs from storage
+  /// 
+  /// Note: This method is kept for compatibility but now returns an empty list
+  /// as we no longer persist trim jobs across sessions
   Future<List<TrimJob>> loadTrimJobs() async {
+    await _loggingService.info('Trim jobs are no longer persisted across sessions');
+    return [];
+  }
+
+  /// Save trim jobs to storage
+  /// 
+  /// Note: This method is kept for compatibility but does nothing
+  /// as we no longer persist trim jobs across sessions
+  Future<void> saveTrimJobs() async {
+    // No-op - we don't save trim jobs anymore
+    await _loggingService.debug('Trim jobs are no longer saved to storage');
+  }
+
+  /// Delete the trim jobs storage file if it exists
+  Future<void> deleteStorageFile() async {
     try {
       final directory = await _appDirectoryService.getAppDataDirectory();
       final file = File('${directory.path}/$_storageFileName');
 
       if (await file.exists()) {
-        final jsonString = await file.readAsString();
-        final jsonList = jsonDecode(jsonString) as List<dynamic>;
-        
-        _trimJobs.clear();
-        _trimJobs.addAll(
-          jsonList.map((json) => TrimJob.fromMap(json as Map<String, dynamic>)).toList(),
-        );
-        
-        _trimJobsController.add(_trimJobs);
-        await _loggingService.info('Loaded trim jobs from storage', details: '${_trimJobs.length} jobs loaded');
-        return _trimJobs;
+        await file.delete();
+        await _loggingService.info('Deleted trim jobs storage file');
       }
     } catch (e) {
-      await _loggingService.error('Error loading trim jobs', details: e.toString());
-    }
-    
-    return [];
-  }
-
-  /// Save trim jobs to storage
-  Future<void> saveTrimJobs() async {
-    try {
-      final directory = await _appDirectoryService.getAppDataDirectory();
-      final file = File('${directory.path}/$_storageFileName');
-
-      final jsonList = _trimJobs.map((job) => job.toMap()).toList();
-      final jsonString = jsonEncode(jsonList);
-      
-      await file.writeAsString(jsonString);
-      await _loggingService.info('Trim jobs saved to storage', details: '${_trimJobs.length} jobs saved');
-    } catch (e) {
-      await _loggingService.error('Error saving trim jobs', details: e.toString());
+      await _loggingService.error('Error deleting trim jobs storage file', details: e.toString());
     }
   }
 
