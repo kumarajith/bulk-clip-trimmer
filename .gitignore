@@ -23,6 +23,8 @@ windows/ffmpeg/
 # VS Code which you may wish to be included in version control, so this line
 # is commented out by default.
 #.vscode/
+# FFmpeg executable
+assets/bin/ffmpeg.exe
 
 # Flutter/Dart/Pub related
 **/doc/api/

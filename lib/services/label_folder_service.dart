@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../models/label_folder.dart';
+import 'app_directory_service.dart';
+import 'logging_service.dart';
 
 /// Service class for managing label folders
 class LabelFolderService {
@@ -15,11 +16,14 @@ class LabelFolderService {
   /// Factory constructor
   factory LabelFolderService() => _instance;
 
+  /// App directory service
+  final _appDirectoryService = AppDirectoryService();
+
+  /// Logging service
+  final _loggingService = LoggingService();
+
   /// Internal constructor
   LabelFolderService._internal();
-
-  /// Storage file name
-  static const String _storageFileName = 'label_folders.json';
 
   /// List of label folders
   final List<LabelFolder> _labelFolders = [];
@@ -39,8 +43,9 @@ class LabelFolderService {
   /// Load label folders from storage
   Future<List<LabelFolder>> loadLabelFolders() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/$_storageFileName');
+      // Get the label folders file path from the app directory service
+      final filePath = await _appDirectoryService.getLabelFoldersFilePath();
+      final file = File(filePath);
 
       if (await file.exists()) {
         final jsonString = await file.readAsString();
@@ -52,10 +57,13 @@ class LabelFolderService {
         );
         
         _labelFoldersController.value = List.from(_labelFolders);
+        await _loggingService.info('Loaded ${_labelFolders.length} label folders');
         return _labelFolders;
+      } else {
+        await _loggingService.info('No label folders file found, starting with empty list');
       }
     } catch (e) {
-      debugPrint('Error loading label folders: $e');
+      await _loggingService.error('Error loading label folders', details: e.toString());
     }
     
     return [];
@@ -64,8 +72,9 @@ class LabelFolderService {
   /// Save label folders to storage
   Future<void> saveLabelFolders() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/$_storageFileName');
+      // Get the label folders file path from the app directory service
+      final filePath = await _appDirectoryService.getLabelFoldersFilePath();
+      final file = File(filePath);
 
       final jsonList = _labelFolders.map((folder) => folder.toMap()).toList();
       final jsonString = jsonEncode(jsonList);
@@ -73,55 +82,62 @@ class LabelFolderService {
       await file.writeAsString(jsonString);
       
       _labelFoldersController.value = List.from(_labelFolders);
+      await _loggingService.info('Saved ${_labelFolders.length} label folders');
     } catch (e) {
-      debugPrint('Error saving label folders: $e');
+      await _loggingService.error('Error saving label folders', details: e.toString());
     }
   }
 
   /// Add a new label folder
-  void addLabelFolder(LabelFolder labelFolder) {
+  Future<void> addLabelFolder(LabelFolder labelFolder) async {
     // Check if label already exists
     final index = _labelFolders.indexWhere((lf) => lf.label == labelFolder.label);
     
     if (index != -1) {
       // Update existing label folder
       _labelFolders[index] = labelFolder;
+      await _loggingService.info('Updated label folder: ${labelFolder.label}');
     } else {
       // Add new label folder
       _labelFolders.add(labelFolder);
+      await _loggingService.info('Added new label folder: ${labelFolder.label}');
     }
     
-    saveLabelFolders();
+    await saveLabelFolders();
     _labelFoldersController.value = List.from(_labelFolders);
   }
 
   /// Remove a label folder
-  void removeLabelFolder(String label) {
+  Future<void> removeLabelFolder(String label) async {
     _labelFolders.removeWhere((lf) => lf.label == label);
-    saveLabelFolders();
+    await _loggingService.info('Removed label folder: $label');
+    await saveLabelFolders();
     _labelFoldersController.value = List.from(_labelFolders);
   }
 
   /// Update a label folder
-  void updateLabelFolder(LabelFolder labelFolder) {
+  Future<void> updateLabelFolder(LabelFolder labelFolder) async {
     final index = _labelFolders.indexWhere((lf) => lf.label == labelFolder.label);
     
     if (index != -1) {
       _labelFolders[index] = labelFolder;
-      saveLabelFolders();
+      await _loggingService.info('Updated label folder: ${labelFolder.label}');
+      await saveLabelFolders();
       _labelFoldersController.value = List.from(_labelFolders);
     }
   }
 
   /// Toggle selection state of a label folder
-  void toggleLabelFolderSelection(String label) {
+  Future<void> toggleLabelFolderSelection(String label) async {
     final index = _labelFolders.indexWhere((lf) => lf.label == label);
     
     if (index != -1) {
+      final newState = !_labelFolders[index].isSelected;
       _labelFolders[index] = _labelFolders[index].copyWith(
-        isSelected: !_labelFolders[index].isSelected,
+        isSelected: newState,
       );
-      saveLabelFolders();
+      await _loggingService.info('Toggled label folder selection: $label (${newState ? 'selected' : 'unselected'})');
+      await saveLabelFolders();
       _labelFoldersController.value = List.from(_labelFolders);
     }
   }
@@ -140,17 +156,21 @@ class LabelFolderService {
   }
 
   /// Clear all selections
-  void clearSelections() {
+  Future<void> clearSelections() async {
     for (var i = 0; i < _labelFolders.length; i++) {
       _labelFolders[i] = _labelFolders[i].copyWith(isSelected: false);
     }
-    saveLabelFolders();
+    await _loggingService.info('Cleared all label folder selections');
+    await saveLabelFolders();
     _labelFoldersController.value = List.from(_labelFolders);
   }
 
   /// Pick a folder for a label
   Future<String?> pickFolderForLabel() async {
     final result = await FilePicker.platform.getDirectoryPath();
+    if (result != null) {
+      await _loggingService.info('Selected folder: $result');
+    }
     return result;
   }
 

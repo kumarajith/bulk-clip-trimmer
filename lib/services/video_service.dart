@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import '../models/video_file.dart';
+import 'logging_service.dart';
 
 /// Service class for handling video file operations
 class VideoService {
@@ -10,6 +11,9 @@ class VideoService {
   /// Factory constructor
   factory VideoService() => _instance;
 
+  /// Logging service
+  final _loggingService = LoggingService();
+
   /// Internal constructor
   VideoService._internal();
 
@@ -18,6 +22,8 @@ class VideoService {
   /// Returns the selected video file or null if cancelled
   Future<VideoFile?> pickVideoFile() async {
     try {
+      await _loggingService.info('Picking video file');
+      
       final result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         allowMultiple: false,
@@ -28,12 +34,17 @@ class VideoService {
         if (file.path != null) {
           final fileObj = File(file.path!);
           final dateModified = await fileObj.lastModified();
-          return VideoFile(filePath: file.path!, dateModified: dateModified);
+          final videoFile = VideoFile(filePath: file.path!, dateModified: dateModified);
+          
+          await _loggingService.info('Video file picked', details: 'Path: ${file.path}');
+          return videoFile;
         }
+      } else {
+        await _loggingService.info('Video file picking cancelled');
       }
       return null;
     } catch (e) {
-      print('Error picking video file: $e');
+      await _loggingService.error('Error picking video file', details: e.toString());
       rethrow;
     }
   }
@@ -43,14 +54,19 @@ class VideoService {
   /// Returns a list of video files found in the directory
   Future<List<VideoFile>> pickDirectoryAndScanVideos() async {
     try {
+      await _loggingService.info('Picking directory for video scanning');
+      
       final result = await FilePicker.platform.getDirectoryPath();
       
       if (result != null) {
+        await _loggingService.info('Directory picked for scanning', details: 'Path: $result');
         return scanDirectoryForVideos(result);
+      } else {
+        await _loggingService.info('Directory picking cancelled');
       }
       return [];
     } catch (e) {
-      print('Error picking directory: $e');
+      await _loggingService.error('Error picking directory', details: e.toString());
       rethrow;
     }
   }
@@ -60,8 +76,11 @@ class VideoService {
   /// Returns a list of video files found in the directory
   Future<List<VideoFile>> scanDirectoryForVideos(String directoryPath) async {
     try {
+      await _loggingService.info('Scanning directory for videos', details: 'Path: $directoryPath');
+      
       final directory = Directory(directoryPath);
       if (!await directory.exists()) {
+        await _loggingService.warning('Directory does not exist', details: 'Path: $directoryPath');
         return [];
       }
 
@@ -81,9 +100,10 @@ class VideoService {
         }
       }
       
+      await _loggingService.info('Directory scan completed', details: 'Found ${videos.length} video files');
       return videos;
     } catch (e) {
-      print('Error scanning directory for videos: $e');
+      await _loggingService.error('Error scanning directory for videos', details: e.toString());
       rethrow;
     }
   }
@@ -93,9 +113,19 @@ class VideoService {
   /// Returns the selected directory path or null if cancelled
   Future<String?> pickOutputDirectory() async {
     try {
-      return await FilePicker.platform.getDirectoryPath();
+      await _loggingService.info('Picking output directory');
+      
+      final result = await FilePicker.platform.getDirectoryPath();
+      
+      if (result != null) {
+        await _loggingService.info('Output directory picked', details: 'Path: $result');
+      } else {
+        await _loggingService.info('Output directory picking cancelled');
+      }
+      
+      return result;
     } catch (e) {
-      print('Error picking output directory: $e');
+      await _loggingService.error('Error picking output directory', details: e.toString());
       rethrow;
     }
   }

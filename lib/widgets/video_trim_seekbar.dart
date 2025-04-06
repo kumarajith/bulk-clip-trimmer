@@ -98,13 +98,13 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
         final margin = constraints.maxWidth * 0.05;
 
         return SizedBox(
-          height: 50, // Reduced height for better visuals
+          height: 60, // Increased overall height to accommodate taller hitbox
           child: Stack(
             alignment: Alignment.centerLeft,
             children: [
               // Highlighted trim area
               Positioned(
-                top: 15,
+                top: 20, // Adjusted position to center in the taller container
                 left: margin + (_handleLeft / duration) * width,
                 width: ((_handleRight - _handleLeft) / duration) * width,
                 height: 20,
@@ -118,7 +118,7 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
 
               // Seek bar background and hitbox
               Positioned(
-                top: 12.5, // Moved up to center the hitbox around the visual bar
+                top: 10, // Adjusted position to center in the taller container
                 left: margin,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -142,7 +142,7 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     });
                   },
                   child: Container(
-                    height: 25, // Increased hitbox height (5px visual bar + 20px invisible hitbox)
+                    height: 40, // Significantly increased hitbox height
                     width: width,
                     color: Colors.transparent, // Transparent container for larger hitbox
                     child: Center(
@@ -161,7 +161,7 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
 
               // Left trim handle
               Positioned(
-                top: 10,
+                top: 15,
                 left: margin + (_handleLeft / duration) * width - 10,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
@@ -187,7 +187,7 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
 
               // Right trim handle
               Positioned(
-                top: 10,
+                top: 15,
                 left: margin + (_handleRight / duration) * width - 10,
                 child: GestureDetector(
                   onHorizontalDragUpdate: (details) {
@@ -213,7 +213,7 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
 
               // Position indicator
               Positioned(
-                top: 17.5,
+                top: 22.5,
                 left: margin + (_position / duration) * width - 7.5,
                 child: Container(
                   height: 15,

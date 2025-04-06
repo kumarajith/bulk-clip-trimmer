@@ -2,11 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
-
 import '../models/trim_job.dart';
+import 'app_directory_service.dart';
 import 'ffmpeg_service.dart';
+import 'logging_service.dart';
 
 /// Service for managing trim jobs
 class TrimJobService {
@@ -18,6 +17,12 @@ class TrimJobService {
 
   /// Factory constructor
   factory TrimJobService() => _instance;
+
+  /// App directory service
+  final _appDirectoryService = AppDirectoryService();
+
+  /// Logging service
+  final _loggingService = LoggingService();
 
   /// Internal constructor
   TrimJobService._internal();
@@ -39,6 +44,8 @@ class TrimJobService {
 
   /// Process a list of trim jobs
   Future<void> processJobs(List<TrimJob> jobs) async {
+    await _loggingService.info('Processing ${jobs.length} trim jobs');
+    
     for (final job in jobs) {
       if (!_trimJobs.contains(job)) {
         _trimJobs.add(job);
@@ -61,11 +68,14 @@ class TrimJobService {
   /// Process a single trim job
   Future<void> _processJob(TrimJob job) async {
     try {
-      // Simulate job processing
-      final totalSteps = 10;
-      for (var i = 1; i <= totalSteps; i++) {
+      await _loggingService.info('Starting to process job', details: 'File: ${job.filePath}');
+      
+      // Use FFmpeg service to process the job
+      final progressStream = _ffmpegService.processTrimJob(job);
+      
+      // Listen to progress updates
+      await for (final progress in progressStream) {
         // Update job progress
-        final progress = i / totalSteps;
         final updatedJob = job.copyWith(progress: progress);
         
         // Update job in list
@@ -75,10 +85,21 @@ class TrimJobService {
           _trimJobsController.add(_trimJobs);
           await saveTrimJobs();
         }
-        
-        // Simulate processing time
-        await Future.delayed(const Duration(milliseconds: 500));
       }
+      
+      // Job completed successfully
+      await _loggingService.info('Job processed successfully', details: 'File: ${job.filePath}');
+      
+      // Log the trim job details
+      await _loggingService.logTrimJob(
+        filePath: job.filePath,
+        startTime: job.startTime,
+        endTime: job.endTime,
+        outputFileName: job.outputFileName,
+        outputFolders: job.outputFolders,
+        audioOnly: job.audioOnly,
+      );
+      
     } catch (e) {
       // Update job with error
       final updatedJob = job.copyWith(error: e.toString());
@@ -91,7 +112,19 @@ class TrimJobService {
         await saveTrimJobs();
       }
       
-      debugPrint('Error processing job: $e');
+      // Log the error
+      await _loggingService.error('Error processing job', details: e.toString());
+      
+      // Log the trim job failure
+      await _loggingService.logTrimJob(
+        filePath: job.filePath,
+        startTime: job.startTime,
+        endTime: job.endTime,
+        outputFileName: job.outputFileName,
+        outputFolders: job.outputFolders,
+        audioOnly: job.audioOnly,
+        error: e.toString(),
+      );
     }
   }
 
@@ -102,27 +135,32 @@ class TrimJobService {
       _trimJobs.removeAt(index);
       _trimJobsController.add(_trimJobs);
       await saveTrimJobs();
+      await _loggingService.info('Job cancelled', details: 'File: ${job.filePath}');
     }
   }
 
   /// Clear all completed jobs
   Future<void> clearCompletedJobs() async {
+    final completedCount = _trimJobs.where((job) => job.progress >= 1.0 || job.error != null).length;
     _trimJobs.removeWhere((job) => job.progress >= 1.0 || job.error != null);
     _trimJobsController.add(_trimJobs);
     await saveTrimJobs();
+    await _loggingService.info('Cleared completed jobs', details: 'Removed $completedCount jobs');
   }
 
   /// Clear all jobs
   Future<void> clearAllJobs() async {
+    final jobCount = _trimJobs.length;
     _trimJobs.clear();
     _trimJobsController.add(_trimJobs);
     await saveTrimJobs();
+    await _loggingService.info('Cleared all jobs', details: 'Removed $jobCount jobs');
   }
 
   /// Load trim jobs from storage
   Future<List<TrimJob>> loadTrimJobs() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
+      final directory = await _appDirectoryService.getAppDataDirectory();
       final file = File('${directory.path}/$_storageFileName');
 
       if (await file.exists()) {
@@ -135,10 +173,11 @@ class TrimJobService {
         );
         
         _trimJobsController.add(_trimJobs);
+        await _loggingService.info('Loaded trim jobs from storage', details: '${_trimJobs.length} jobs loaded');
         return _trimJobs;
       }
     } catch (e) {
-      debugPrint('Error loading trim jobs: $e');
+      await _loggingService.error('Error loading trim jobs', details: e.toString());
     }
     
     return [];
@@ -147,15 +186,16 @@ class TrimJobService {
   /// Save trim jobs to storage
   Future<void> saveTrimJobs() async {
     try {
-      final directory = await getApplicationDocumentsDirectory();
+      final directory = await _appDirectoryService.getAppDataDirectory();
       final file = File('${directory.path}/$_storageFileName');
 
       final jsonList = _trimJobs.map((job) => job.toMap()).toList();
       final jsonString = jsonEncode(jsonList);
       
       await file.writeAsString(jsonString);
+      await _loggingService.info('Trim jobs saved to storage', details: '${_trimJobs.length} jobs saved');
     } catch (e) {
-      debugPrint('Error saving trim jobs: $e');
+      await _loggingService.error('Error saving trim jobs', details: e.toString());
     }
   }
 

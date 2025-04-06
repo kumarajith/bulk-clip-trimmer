@@ -7,6 +7,7 @@ import '../models/label_folder.dart';
 import '../services/video_service.dart';
 import '../services/trim_job_service.dart';
 import '../services/label_folder_service.dart';
+import '../services/logging_service.dart';
 
 /// Provider for managing application state
 class AppStateProvider extends ChangeNotifier {
@@ -21,6 +22,9 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Label folder service
   final _labelFolderService = LabelFolderService();
+  
+  /// Logging service
+  final _loggingService = LoggingService();
 
   /// List of videos in the playlist
   final List<VideoFile> _videos = [];
@@ -58,6 +62,9 @@ class AppStateProvider extends ChangeNotifier {
     
     // Listen to label folder changes
     _labelFolderService.labelFoldersNotifier.addListener(_onLabelFoldersChanged);
+    
+    // Log app startup
+    _loggingService.info('AppStateProvider initialized');
   }
   
   /// Handle label folders changes
@@ -69,6 +76,8 @@ class AppStateProvider extends ChangeNotifier {
   /// Load initial data
   Future<void> _loadInitialData() async {
     try {
+      await _loggingService.info('Loading initial application data');
+      
       // Load label folders
       await _labelFolderService.loadLabelFolders();
       
@@ -76,9 +85,10 @@ class AppStateProvider extends ChangeNotifier {
       final jobs = await _trimJobService.loadTrimJobs();
       _trimJobs.addAll(jobs);
       
+      await _loggingService.info('Initial data loaded successfully');
       notifyListeners();
     } catch (e) {
-      debugPrint('Error loading initial data: $e');
+      await _loggingService.error('Error loading initial data', details: e.toString());
     }
   }
 
@@ -133,6 +143,7 @@ class AppStateProvider extends ChangeNotifier {
   void playVideo(VideoFile video) {
     _currentVideo = video;
     player.open(Media(video.filePath));
+    _loggingService.info('Playing video', details: 'Path: ${video.filePath}');
     notifyListeners();
   }
 
@@ -140,8 +151,10 @@ class AppStateProvider extends ChangeNotifier {
   void togglePlayPause() {
     if (player.state.playing) {
       player.pause();
+      _loggingService.info('Video paused');
     } else {
       player.play();
+      _loggingService.info('Video resumed');
     }
     notifyListeners();
   }
@@ -149,24 +162,28 @@ class AppStateProvider extends ChangeNotifier {
   /// Set the trim range
   void setTrimRange(RangeValues range) {
     _trimRange = range;
+    _loggingService.info('Trim range set', details: 'Start: ${range.start}s, End: ${range.end}s');
     notifyListeners();
   }
 
   /// Set the output file name
   void setOutputFileName(String name) {
     _outputFileName = name;
+    _loggingService.info('Output file name set', details: name);
     notifyListeners();
   }
 
   /// Toggle dark mode
   void toggleDarkMode() {
     _isDarkMode = !_isDarkMode;
+    _loggingService.info('Dark mode toggled', details: 'Enabled: $_isDarkMode');
     notifyListeners();
   }
 
   /// Toggle jobs panel
   void toggleJobsPanel() {
     _showJobsPanel = !_showJobsPanel;
+    _loggingService.info('Jobs panel toggled', details: 'Visible: $_showJobsPanel');
     notifyListeners();
   }
 
@@ -175,6 +192,7 @@ class AppStateProvider extends ChangeNotifier {
     final video = await _videoService.pickVideoFile();
     if (video != null && !_videos.contains(video)) {
       _videos.add(video);
+      _loggingService.info('Video added to playlist', details: 'Path: ${video.filePath}');
       notifyListeners();
     }
   }
@@ -183,11 +201,14 @@ class AppStateProvider extends ChangeNotifier {
   Future<void> pickVideoFolder() async {
     final videos = await _videoService.pickDirectoryAndScanVideos();
     if (videos.isNotEmpty) {
+      int addedCount = 0;
       for (final video in videos) {
         if (!_videos.contains(video)) {
           _videos.add(video);
+          addedCount++;
         }
       }
+      _loggingService.info('Videos added from folder', details: 'Added $addedCount of ${videos.length} videos');
       notifyListeners();
     }
   }
@@ -200,6 +221,7 @@ class AppStateProvider extends ChangeNotifier {
       _currentVideo = null;
       _trimRange = null;
     }
+    _loggingService.info('Video removed from playlist', details: 'Path: ${video.filePath}');
     notifyListeners();
   }
 
@@ -209,24 +231,28 @@ class AppStateProvider extends ChangeNotifier {
     player.stop();
     _currentVideo = null;
     _trimRange = null;
+    _loggingService.info('Playlist cleared');
     notifyListeners();
   }
 
   /// Add a label folder
   void addLabelFolder(LabelFolder labelFolder) {
     _labelFolderService.addLabelFolder(labelFolder);
+    _loggingService.info('Label folder added', details: 'Label: ${labelFolder.label}, Path: ${labelFolder.folderPath}');
     // Notification will happen via the listener
   }
 
   /// Remove a label folder
   void removeLabelFolder(String label) {
     _labelFolderService.removeLabelFolder(label);
+    _loggingService.info('Label folder removed', details: 'Label: $label');
     // Notification will happen via the listener
   }
 
   /// Toggle label selection
   void toggleLabelSelection(String label) {
     _labelFolderService.toggleLabelFolderSelection(label);
+    _loggingService.info('Label folder selection toggled', details: 'Label: $label');
     // Notification will happen via the listener
   }
 
@@ -240,6 +266,8 @@ class AppStateProvider extends ChangeNotifier {
     if (folder.label.isNotEmpty) {
       final updatedFolder = folder.copyWith(audioOnly: !folder.audioOnly);
       _labelFolderService.updateLabelFolder(updatedFolder);
+      _loggingService.info('Label folder audio only toggled', 
+        details: 'Label: $label, Audio Only: ${updatedFolder.audioOnly}');
       // Notification will happen via the listener
     }
   }
@@ -268,6 +296,9 @@ class AppStateProvider extends ChangeNotifier {
           _trimJobs.add(job);
         }
         
+        _loggingService.info('Trim jobs added', 
+          details: 'Created ${jobs.length} jobs for file: ${_currentVideo!.filePath}');
+        
         // Start processing jobs
         _trimJobService.processJobs(jobs);
         
@@ -275,7 +306,15 @@ class AppStateProvider extends ChangeNotifier {
         _outputFileName = '';
         
         notifyListeners();
+      } else {
+        _loggingService.warning('No output folders selected for trim job');
       }
+    } else {
+      _loggingService.warning('Cannot create trim job', 
+        details: 'Missing required data: ' +
+        (_currentVideo == null ? 'No video selected. ' : '') +
+        (_trimRange == null ? 'No trim range set. ' : '') +
+        (_outputFileName.isEmpty ? 'No output file name. ' : ''));
     }
   }
 
@@ -284,6 +323,7 @@ class AppStateProvider extends ChangeNotifier {
     final index = _trimJobs.indexWhere((j) => j == job);
     if (index != -1) {
       _trimJobs[index] = job;
+      _loggingService.info('Trim job updated', details: 'File: ${job.filePath}');
       notifyListeners();
     }
   }
@@ -292,6 +332,7 @@ class AppStateProvider extends ChangeNotifier {
   void dispose() {
     player.dispose();
     _labelFolderService.labelFoldersNotifier.removeListener(_onLabelFoldersChanged);
+    _loggingService.info('AppStateProvider disposed');
     super.dispose();
   }
 }
