@@ -1,31 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/trim_job.dart';
 import '../providers/app_state_provider.dart';
 
 /// Widget for displaying trim jobs
 class TrimJobsWidget extends StatelessWidget {
-  /// App state provider
-  final AppStateProvider appState;
-
   /// Constructor
   const TrimJobsWidget({
     Key? key,
-    required this.appState,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: appState,
-      builder: (context, _) {
+    return Consumer<AppStateProvider>(
+      builder: (context, appState, _) {
         final showJobsPanel = appState.showJobsPanel;
         final trimJobs = appState.trimJobs;
-        
+
+        print('TrimJobsWidget rebuilding via Consumer. Jobs: ${trimJobs.map((j) => '${j.outputFileName.isNotEmpty ? j.outputFileName : j.filePath.split('/').last.split('\\').last}: ${(j.progress * 100).toStringAsFixed(0)}% (Error: ${j.error != null})').join(', ')}');
+
         return Column(
-          mainAxisSize: MainAxisSize.min, // Set to min to avoid unbounded height issues
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Panel header
             InkWell(
               onTap: appState.toggleJobsPanel,
               child: Container(
@@ -52,11 +49,9 @@ class TrimJobsWidget extends StatelessWidget {
                 ),
               ),
             ),
-            
-            // Jobs list with AnimatedContainer for smooth transitions
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              height: showJobsPanel ? 200.0 : 0.0, // Fixed height that animates between 0 and 200
+              height: showJobsPanel ? 200.0 : 0.0,
               child: showJobsPanel ? Container(
                 child: trimJobs.isEmpty
                   ? Center(
@@ -66,15 +61,15 @@ class TrimJobsWidget extends StatelessWidget {
                       ),
                     )
                   : ListView.builder(
-                      shrinkWrap: true, // Important to avoid unbounded height issues
+                      shrinkWrap: true,
                       itemCount: trimJobs.length,
                       itemBuilder: (context, index) {
                         final job = trimJobs[index];
-                        final fileName = job.filePath.split('/').last;
-                        
+                        final fileName = job.filePath.split('/').last.split('\\').last;
+
                         return ListTile(
                           title: Text(
-                            '${job.outputFileName} (${job.audioOnly ? 'Audio Only' : 'Video'})',
+                            '${job.outputFileName.isNotEmpty ? job.outputFileName : fileName} (${job.audioOnly ? 'Audio Only' : 'Video'})',
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Column(
@@ -90,15 +85,16 @@ class TrimJobsWidget extends StatelessWidget {
                                   'Error: ${job.error}',
                                   style: const TextStyle(color: Colors.red),
                                   overflow: TextOverflow.ellipsis,
+                                  maxLines: 2,
                                 ),
                               LinearProgressIndicator(
-                                value: job.progress >= 0 ? job.progress : 0,
+                                value: (job.progress >= 0 && job.progress <= 1.0) ? job.progress : null,
                                 backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                  job.progress == 1.0
-                                      ? Colors.green
-                                      : job.progress < 0
-                                          ? Colors.red
+                                  job.error != null
+                                      ? Colors.red
+                                      : job.progress >= 1.0
+                                          ? Colors.green
                                           : Theme.of(context).colorScheme.primary,
                                 ),
                               ),
@@ -116,7 +112,6 @@ class TrimJobsWidget extends StatelessWidget {
     );
   }
 
-  /// Build an icon representing the job status
   Widget _buildJobStatusIcon(TrimJob job) {
     if (job.progress == 1.0) {
       return const Icon(Icons.check_circle, color: Colors.green);
@@ -129,7 +124,6 @@ class TrimJobsWidget extends StatelessWidget {
     }
   }
 
-  /// Format duration as MM:SS
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final minutes = twoDigits(duration.inMinutes.remainder(60));

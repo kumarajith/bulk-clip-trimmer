@@ -87,9 +87,10 @@ class AppStateProvider extends ChangeNotifier {
   
   /// Handle trim jobs changes
   void _onTrimJobsChanged(List<TrimJob> jobs) {
-    // Update our local list
+    // Update our local list (create a mutable copy first)
+    final newList = List<TrimJob>.from(jobs);
     _trimJobs.clear();
-    _trimJobs.addAll(jobs);
+    _trimJobs.addAll(newList);
     
     // Notify listeners
     notifyListeners();

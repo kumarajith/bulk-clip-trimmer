@@ -334,6 +334,7 @@ class FFmpegService {
       }
       
       // All folders processed successfully
+      await _loggingService.info('Adding final progress 1.0 to stream', details: 'File: ${job.filePath}');
       controller.add(1.0);
       await _loggingService.info('Trim job completed successfully', 
           details: 'File: ${job.filePath}\nFull log:\n${_ffmpegOutputLogs[jobId]!.toString()}');
@@ -341,6 +342,7 @@ class FFmpegService {
       // Clean up log after successful completion
       _ffmpegOutputLogs.remove(jobId);
     } catch (e) {
+      await _loggingService.error('Adding error to stream', details: 'File: ${job.filePath}, Error: ${e.toString()}');
       await _loggingService.error('Error in _processTrimJobInternal', details: e.toString());
       controller.addError(e);
       rethrow;
@@ -355,6 +357,9 @@ class FFmpegService {
     StreamController<double> controller
   ) {
     try {
+      // Log raw data received from FFmpeg stderr/stdout
+      _loggingService.debug('FFmpeg Raw Output', details: data.trim());
+          
       // FFmpeg outputs time information in format "time=HH:MM:SS.MS"
       final timeMatch = RegExp(r'time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})').firstMatch(data);
       
@@ -376,12 +381,13 @@ class FFmpegService {
         final elapsedDurationMs = currentTime.inMilliseconds;
         
         // Calculate progress as a percentage of the total duration
-        final progress = elapsedDurationMs / totalDurationMs;
+        final progress = totalDurationMs > 0 ? elapsedDurationMs / totalDurationMs : 0.0; // Avoid division by zero
         
         // Clamp progress between 0.0 and 1.0
         final clampedProgress = progress.clamp(0.0, 1.0);
         
         // Send progress update
+        _loggingService.debug('FFmpeg progress update', details: 'Raw: $progress, Clamped: $clampedProgress, CurrentTime: ${currentTime.inMilliseconds}ms, TotalDuration: ${totalDurationMs}ms');
         controller.add(clampedProgress);
       }
     } catch (e) {

@@ -78,8 +78,8 @@ class TrimJobService {
         final index = _trimJobs.indexOf(job);
         if (index != -1) {
           _trimJobs[index] = updatedJob;
-          _trimJobsController.add(_trimJobs);
         }
+        _updateAndBroadcastJobs();
       }
       
       // Job completed successfully
@@ -103,8 +103,8 @@ class TrimJobService {
       final index = _trimJobs.indexOf(job);
       if (index != -1) {
         _trimJobs[index] = updatedJob;
-        _trimJobsController.add(_trimJobs);
       }
+      _updateAndBroadcastJobs();
       
       // Log the error
       await _loggingService.error('Error processing job', details: e.toString());
@@ -184,5 +184,12 @@ class TrimJobService {
   /// Dispose resources
   void dispose() {
     _trimJobsController.close();
+  }
+
+  /// Helper method to update the stream controller with the current job list
+  void _updateAndBroadcastJobs() {
+    _loggingService.debug('TrimJobService: Broadcasting updated job list', 
+      details: 'Jobs: ${_trimJobs.map((j) => '${j.outputFileName}: ${(j.progress * 100).toStringAsFixed(1)}% (Error: ${j.error != null})').join(', ')}');
+    _trimJobsController.add(List.unmodifiable(_trimJobs));
   }
 }

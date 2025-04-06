@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:provider/provider.dart';
 
 import 'providers/app_state_provider.dart';
 import 'screens/main_screen.dart';
@@ -65,19 +66,22 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _appState,
-      builder: (context, _) {
-        return MaterialApp(
-          title: 'Bulk Clip Trimmer',
-          theme: _appState.isDarkMode ? ThemeData.dark() : ThemeData.light(),
-          debugShowCheckedModeBanner: false,
-          home: MainScreen(
-            appState: _appState,
-            controller: _controller,
-          ),
-        );
-      },
+    // Provide the AppStateProvider to the widget tree
+    return ChangeNotifierProvider<AppStateProvider>.value(
+      value: _appState, // Provide the existing instance
+      child: Consumer<AppStateProvider>( // Consume for theme changes
+        builder: (context, appState, _) {
+          return MaterialApp(
+            title: 'Bulk Clip Trimmer',
+            theme: appState.isDarkMode ? ThemeData.dark() : ThemeData.light(),
+            debugShowCheckedModeBanner: false,
+            home: MainScreen(
+              // appState is no longer passed directly
+              controller: _controller,
+            ),
+          );
+        },
+      ),
     );
   }
 }

@@ -1,84 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/label_folder.dart';
 import '../providers/app_state_provider.dart';
 import '../services/label_folder_service.dart';
 
 /// Widget for managing label folders
-class LabelFoldersWidget extends StatefulWidget {
-  /// App state provider
-  final AppStateProvider appState;
-
+class LabelFoldersWidget extends StatelessWidget {
   /// Constructor
-  const LabelFoldersWidget({
-    Key? key,
-    required this.appState,
-  }) : super(key: key);
-
-  @override
-  _LabelFoldersWidgetState createState() => _LabelFoldersWidgetState();
-}
-
-class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
-  /// Label folder service
-  final _labelFolderService = LabelFolderService();
-  
-  /// Show the label folders configuration dialog
-  Future<void> _showLabelFoldersDialog() async {
-    // Create a local copy of label folders for editing
-    final labelFolders = List<LabelFolder>.from(_labelFolderService.labelFolders);
-    
-    // Add an empty row if needed
-    if (labelFolders.isEmpty || 
-        (labelFolders.last.label.isNotEmpty && labelFolders.last.folderPath.isNotEmpty)) {
-      labelFolders.add(LabelFolder(label: '', folderPath: ''));
-    }
-    
-    // Create a separate StatefulWidget for the dialog content to properly manage controllers
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return _LabelFolderDialog(
-          initialFolders: labelFolders,
-          onSave: (updatedFolders) {
-            // Process the updated folders
-            final validFolders = updatedFolders
-                .where((lf) => lf.label.isNotEmpty && lf.folderPath.isNotEmpty)
-                .toList();
-            
-            // Get existing labels
-            final existingLabels = _labelFolderService.labelFolders
-                .map((lf) => lf.label)
-                .toSet();
-            
-            // Get new labels
-            final newLabels = validFolders
-                .map((lf) => lf.label)
-                .toSet();
-            
-            // Remove folders that no longer exist
-            for (final label in existingLabels) {
-              if (!newLabels.contains(label)) {
-                widget.appState.removeLabelFolder(label);
-              }
-            }
-            
-            // Add or update label folders
-            for (final labelFolder in validFolders) {
-              widget.appState.addLabelFolder(labelFolder);
-            }
-          },
-        );
-      },
-    );
-  }
+  const LabelFoldersWidget({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Use ValueListenableBuilder to listen to changes in the label folders
-    return ValueListenableBuilder<List<LabelFolder>>(
-      valueListenable: _labelFolderService.labelFoldersNotifier,
-      builder: (context, labelFolders, _) {
+    // Get appState from provider
+    final appState = Provider.of<AppStateProvider>(context);
+    
+    // Use Consumer to rebuild when labelFolders changes
+    return Consumer<AppStateProvider>( 
+      builder: (context, appStateConsumer, _) {
+        final labelFolders = appStateConsumer.labelFolders;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -95,7 +35,7 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                   IconButton(
                     icon: const Icon(Icons.settings),
                     tooltip: 'Configure label folders',
-                    onPressed: _showLabelFoldersDialog,
+                    onPressed: () => _showLabelFoldersDialog(context, appState),
                   ),
                 ],
               ),
@@ -139,7 +79,7 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                                 ),
                                 selected: labelFolder.isSelected,
                                 onSelected: (selected) {
-                                  widget.appState.toggleLabelSelection(labelFolder.label);
+                                  appState.toggleLabelSelection(labelFolder.label);
                                 },
                                 tooltip: '${labelFolder.folderPath}${labelFolder.audioOnly ? ' (Audio Only)' : ''}',
                               );
@@ -172,7 +112,7 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                                     ),
                                     label: Text(folder.audioOnly ? 'Audio Only' : 'Video + Audio'),
                                     onPressed: () {
-                                      widget.appState.toggleAudioOnly(folder.label);
+                                      appState.toggleAudioOnly(folder.label);
                                     },
                                     style: TextButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -190,6 +130,56 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  /// Show the label folders configuration dialog
+  Future<void> _showLabelFoldersDialog(BuildContext context, AppStateProvider appState) async {
+    // Create a local copy of label folders for editing
+    final labelFolders = List<LabelFolder>.from(appState.labelFolders);
+    
+    // Add an empty row if needed
+    if (labelFolders.isEmpty || 
+        (labelFolders.last.label.isNotEmpty && labelFolders.last.folderPath.isNotEmpty)) {
+      labelFolders.add(LabelFolder(label: '', folderPath: ''));
+    }
+    
+    // Create a separate StatefulWidget for the dialog content to properly manage controllers
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return _LabelFolderDialog(
+          initialFolders: labelFolders,
+          onSave: (updatedFolders) {
+            // Process the updated folders
+            final validFolders = updatedFolders
+                .where((lf) => lf.label.isNotEmpty && lf.folderPath.isNotEmpty)
+                .toList();
+            
+            // Get existing labels
+            final existingLabels = appState.labelFolders
+                .map((lf) => lf.label)
+                .toSet();
+            
+            // Get new labels
+            final newLabels = validFolders
+                .map((lf) => lf.label)
+                .toSet();
+            
+            // Remove folders that no longer exist
+            for (final label in existingLabels) {
+              if (!newLabels.contains(label)) {
+                appState.removeLabelFolder(label);
+              }
+            }
+            
+            // Add or update label folders
+            for (final labelFolder in validFolders) {
+              appState.addLabelFolder(labelFolder);
+            }
+          },
         );
       },
     );

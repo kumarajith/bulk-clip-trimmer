@@ -1,29 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../providers/app_state_provider.dart';
 
 /// Widget for displaying the video playlist
 class PlaylistWidget extends StatelessWidget {
-  /// App state provider
-  final AppStateProvider appState;
-
   /// Constructor
-  const PlaylistWidget({
-    Key? key,
-    required this.appState,
-  }) : super(key: key);
+  const PlaylistWidget({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
 
-    return AnimatedBuilder(
-      animation: appState,
-      builder: (context, _) {
-        final videos = appState.videos;
-        final currentVideo = appState.currentVideo;
-        
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+
+    return Consumer<AppStateProvider>(
+      builder: (context, appStateConsumer, _) {
+        final videos = appStateConsumer.videos;
+        final currentVideo = appStateConsumer.currentVideo;
+
         return Column(
           children: [
             // Playlist header
@@ -46,19 +42,19 @@ class PlaylistWidget extends StatelessWidget {
                       IconButton(
                         icon: const Icon(Icons.add),
                         tooltip: 'Add single video',
-                        onPressed: appState.pickVideoFile,
+                        onPressed: () => appState.pickVideoFile(),
                       ),
                       // Add folder button
                       IconButton(
                         icon: const Icon(Icons.folder_open),
                         tooltip: 'Add videos from folder',
-                        onPressed: appState.pickVideoFolder,
+                        onPressed: () => appState.pickVideoFolder(),
                       ),
                       // Clear playlist button
                       IconButton(
                         icon: const Icon(Icons.clear_all),
                         tooltip: 'Clear playlist',
-                        onPressed: videos.isEmpty ? null : appState.clearPlaylist,
+                        onPressed: videos.isEmpty ? null : () => appState.clearPlaylist(),
                       ),
                     ],
                   ),
@@ -89,7 +85,7 @@ class PlaylistWidget extends StatelessWidget {
                           ElevatedButton.icon(
                             icon: const Icon(Icons.add),
                             label: const Text('Add Videos'),
-                            onPressed: appState.pickVideoFolder,
+                            onPressed: () => appState.pickVideoFolder(),
                           ),
                         ],
                       ),
@@ -146,13 +142,13 @@ class PlaylistWidget extends StatelessWidget {
                           ),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete),
-                            onPressed: () => appState.removeVideoFromPlaylist(video),
+                            onPressed: () => appStateConsumer.removeVideoFromPlaylist(video),
                           ),
                           selected: isSelected,
                           selectedTileColor: isDarkMode
                               ? Colors.grey[700]
                               : Colors.grey[300],
-                          onTap: () => appState.playVideo(video),
+                          onTap: () => appStateConsumer.playVideo(video),
                         );
                       },
                     ),
