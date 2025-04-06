@@ -26,7 +26,9 @@ class VideoService {
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         if (file.path != null) {
-          return VideoFile(filePath: file.path!);
+          final fileObj = File(file.path!);
+          final dateModified = await fileObj.lastModified();
+          return VideoFile(filePath: file.path!, dateModified: dateModified);
         }
       }
       return null;
@@ -73,7 +75,8 @@ class VideoService {
           final extension = path.substring(path.lastIndexOf('.')).toLowerCase();
           
           if (videoExtensions.contains(extension)) {
-            videos.add(VideoFile(filePath: path));
+            final dateModified = await entity.lastModified();
+            videos.add(VideoFile(filePath: path, dateModified: dateModified));
           }
         }
       }

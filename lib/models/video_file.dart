@@ -2,9 +2,15 @@
 class VideoFile {
   /// Path to the video file
   final String filePath;
+  
+  /// Date when the file was last modified
+  final DateTime? dateModified;
 
   /// Constructor
-  const VideoFile({required this.filePath});
+  const VideoFile({
+    required this.filePath,
+    this.dateModified,
+  });
 
   /// Get the file name from the path
   String get fileName => filePath.split('/').last;

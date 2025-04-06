@@ -42,6 +42,9 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Flag for showing jobs panel
   bool _showJobsPanel = false;
+  
+  /// Width of the playlist panel
+  double _playlistPanelWidth = 300.0;
 
   /// Constructor
   AppStateProvider({required this.player}) {
@@ -79,8 +82,21 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
-  /// Get the list of videos
-  List<VideoFile> get videos => List.unmodifiable(_videos);
+  /// Get the list of videos (sorted by date descending)
+  List<VideoFile> get videos {
+    // Create a copy of the list to avoid modifying the original
+    final sortedVideos = List<VideoFile>.from(_videos);
+    
+    // Sort by date descending (newest first)
+    sortedVideos.sort((a, b) {
+      if (a.dateModified == null && b.dateModified == null) return 0;
+      if (a.dateModified == null) return 1; // null dates go to the end
+      if (b.dateModified == null) return -1;
+      return b.dateModified!.compareTo(a.dateModified!); // descending order
+    });
+    
+    return sortedVideos;
+  }
 
   /// Get the list of trim jobs
   List<TrimJob> get trimJobs => List.unmodifiable(_trimJobs);
@@ -102,6 +118,16 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Get whether jobs panel is shown
   bool get showJobsPanel => _showJobsPanel;
+
+  /// Get playlist panel width
+  double get playlistPanelWidth => _playlistPanelWidth;
+  
+  /// Set playlist panel width
+  void setPlaylistPanelWidth(double width) {
+    // Ensure width is within reasonable bounds (200-500px)
+    _playlistPanelWidth = width.clamp(200.0, 500.0);
+    notifyListeners();
+  }
 
   /// Play a video
   void playVideo(VideoFile video) {

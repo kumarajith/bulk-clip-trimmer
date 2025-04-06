@@ -46,9 +46,6 @@ class MainScreen extends StatelessWidget {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // Responsive layout adjustments
-          final isNarrow = constraints.maxWidth < 900;
-          
           return Row(
             children: [
               // Left panel - Video player and controls
@@ -95,21 +92,53 @@ class MainScreen extends StatelessWidget {
                 ),
               ),
               
-              // Right panel - Playlist and jobs
-              Container(
-                width: isNarrow ? 250 : 300,
-                child: Column(
-                  children: [
-                    // Playlist
-                    Expanded(
-                      flex: 2,
-                      child: PlaylistWidget(appState: appState),
+              // Resizable divider
+              MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  onHorizontalDragUpdate: (details) {
+                    // Calculate new width based on drag
+                    final newWidth = appState.playlistPanelWidth - details.delta.dx;
+                    appState.setPlaylistPanelWidth(newWidth);
+                  },
+                  child: Container(
+                    width: 8,
+                    height: double.infinity,
+                    color: Colors.transparent,
+                    child: Center(
+                      child: Container(
+                        width: 2,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).dividerColor,
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
                     ),
-                    
-                    // Trim jobs
-                    TrimJobsWidget(appState: appState),
-                  ],
+                  ),
                 ),
+              ),
+              
+              // Right panel - Playlist and jobs (now with dynamic width)
+              AnimatedBuilder(
+                animation: appState,
+                builder: (context, _) {
+                  return Container(
+                    width: appState.playlistPanelWidth,
+                    child: Column(
+                      children: [
+                        // Playlist
+                        Expanded(
+                          flex: 2,
+                          child: PlaylistWidget(appState: appState),
+                        ),
+                        
+                        // Trim jobs
+                        TrimJobsWidget(appState: appState),
+                      ],
+                    ),
+                  );
+                },
               ),
             ],
           );

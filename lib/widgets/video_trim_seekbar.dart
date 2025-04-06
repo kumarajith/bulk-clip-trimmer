@@ -116,9 +116,9 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                 ),
               ),
 
-              // Seek bar background
+              // Seek bar background and hitbox
               Positioned(
-                top: 22.5,
+                top: 12.5, // Moved up to center the hitbox around the visual bar
                 left: margin,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -142,11 +142,18 @@ class _VideoTrimSeekBarState extends State<VideoTrimSeekBar> {
                     });
                   },
                   child: Container(
-                    height: 5,
+                    height: 25, // Increased hitbox height (5px visual bar + 20px invisible hitbox)
                     width: width,
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.grey[800] : Colors.black,
-                      borderRadius: BorderRadius.circular(5),
+                    color: Colors.transparent, // Transparent container for larger hitbox
+                    child: Center(
+                      child: Container(
+                        height: 5, // Actual visual bar remains 5px
+                        width: width,
+                        decoration: BoxDecoration(
+                          color: isDarkMode ? Colors.grey[800] : Colors.black,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
                     ),
                   ),
                 ),
