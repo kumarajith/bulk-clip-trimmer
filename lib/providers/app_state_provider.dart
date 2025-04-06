@@ -36,7 +36,7 @@ class AppStateProvider extends ChangeNotifier {
   final List<VideoFile> _videos = [];
 
   /// List of trim jobs
-  final List<TrimJob> _trimJobs = [];
+  List<TrimJob> _trimJobs = [];
 
   /// Current video being played
   VideoFile? _currentVideo;
@@ -58,6 +58,9 @@ class AppStateProvider extends ChangeNotifier {
   
   /// Subscription for trim jobs stream
   late final StreamSubscription<List<TrimJob>> _trimJobsSubscription;
+
+  /// Debounce timer for trim jobs updates
+  Timer? _debounceTimer;
 
   /// Constructor
   AppStateProvider({required this.player}) {
@@ -87,12 +90,20 @@ class AppStateProvider extends ChangeNotifier {
   
   /// Handle trim jobs changes
   void _onTrimJobsChanged(List<TrimJob> jobs) {
-    // Update our local list
-    _trimJobs.clear();
-    _trimJobs.addAll(jobs);
+    _trimJobs = jobs;
     
-    // Notify listeners
+    // Force a rebuild of the UI
     notifyListeners();
+    
+    // Schedule another update after a short delay to ensure animations are smooth
+    // This is especially important for progress updates
+    if (_debounceTimer?.isActive ?? false) {
+      _debounceTimer?.cancel();
+    }
+    
+    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
+      notifyListeners();
+    });
   }
 
   /// Load initial data

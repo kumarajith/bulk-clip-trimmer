@@ -134,7 +134,7 @@ class MainScreen extends StatelessWidget {
                         ),
                         
                         // Trim jobs
-                        TrimJobsWidget(appState: appState),
+                        TrimJobsWidget(appStateProvider: appState),
                       ],
                     ),
                   );

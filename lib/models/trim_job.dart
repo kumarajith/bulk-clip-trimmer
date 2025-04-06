@@ -19,7 +19,7 @@ class TrimJob {
   final String outputFileName;
   
   /// Current progress of the trim job (0.0 to 1.0)
-  final double progress;
+  double progress;
   
   /// Path to the source video file (alias for filePath)
   String get sourceFilePath => filePath;
@@ -36,7 +36,7 @@ class TrimJob {
   final String? error;
   
   /// Constructor
-  const TrimJob({
+  TrimJob({
     required this.filePath,
     required this.startTime,
     required this.endTime,

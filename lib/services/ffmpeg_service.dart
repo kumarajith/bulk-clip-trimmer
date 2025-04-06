@@ -23,6 +23,9 @@ class FFmpegService {
   /// Store FFmpeg output for debugging
   final Map<String, StringBuffer> _ffmpegOutputLogs = {};
 
+  /// Store the highest progress we've seen for each job to prevent going backwards
+  final Map<String, double> _highestProgressValues = {};
+
   /// Internal constructor
   FFmpegService._internal() {
     // Check if FFmpeg is available when service is created
@@ -56,23 +59,6 @@ class FFmpegService {
       _isFFmpegAvailable = false;
       return false;
     }
-  }
-
-  /// Process a trim job using FFmpeg
-  /// 
-  /// Returns a stream of progress updates (0.0 to 1.0)
-  Stream<double> processTrimJob(TrimJob job) {
-    final controller = StreamController<double>();
-    
-    _processTrimJobInternal(job, controller)
-        .then((_) => controller.close())
-        .catchError((error) {
-          _loggingService.error('Error processing trim job', details: error.toString());
-          controller.addError(error);
-          controller.close();
-        });
-    
-    return controller.stream;
   }
 
   /// Get video duration using FFmpeg
@@ -152,10 +138,45 @@ class FFmpegService {
     }
   }
 
+  /// Process a trim job using FFmpeg
+  /// 
+  /// Returns a stream of progress updates (0.0 to 1.0)
+  Stream<double> processTrimJob(TrimJob job) {
+    final controller = StreamController<double>();
+    
+    // Generate a unique job ID for tracking progress
+    final jobId = '${DateTime.now().millisecondsSinceEpoch}_${job.filePath.hashCode}';
+    
+    // Initialize progress tracking for this job
+    _highestProgressValues[jobId] = 0.0;
+    
+    // Log the job details
+    _loggingService.info('Starting trim job', 
+        details: 'File: ${job.filePath}\n' +
+                'Start: ${_formatDuration(job.startDuration)} (${job.startTime} sec)\n' +
+                'End: ${_formatDuration(job.endDuration)} (${job.endTime} sec)\n' +
+                'Output: ${job.outputFileName}\n' +
+                'Folders: ${job.outputFolders.join(', ')}\n' +
+                'Audio only: ${job.audioOnly}');
+    
+    // Process the job in a separate isolate to avoid blocking the UI
+    _processTrimJobInternal(job, controller, jobId).catchError((error) {
+      _loggingService.error('Error processing trim job', details: error.toString());
+      controller.addError(error);
+    }).whenComplete(() {
+      // Clean up progress tracking when job completes
+      _highestProgressValues.remove(jobId);
+      controller.close();
+    });
+    
+    return controller.stream;
+  }
+
   /// Internal method to process a trim job
   Future<void> _processTrimJobInternal(
     TrimJob job, 
-    StreamController<double> controller
+    StreamController<double> controller,
+    String jobId
   ) async {
     try {
       // Check if FFmpeg is available
@@ -205,9 +226,8 @@ class FFmpegService {
         'End: ${_formatDuration(job.endDuration)} (${endTimeSec.toStringAsFixed(3)} sec)\n'
         'Output: ${job.outputFileName}\n'
         'Folders: ${job.outputFolders.join(', ')}\n'
-        'Audio only: ${job.audioOnly}'
-      );
-
+        'Audio only: ${job.audioOnly}');
+    
       // Validate start time is within video duration
       if (startTimeSec >= videoDurationSec) {
         throw Exception('Start time (${startTimeSec.toStringAsFixed(3)} sec) ' +
@@ -231,8 +251,14 @@ class FFmpegService {
       }
 
       // Create a unique ID for this job to track its output
-      final jobId = '${DateTime.now().millisecondsSinceEpoch}_${job.filePath.hashCode}';
       _ffmpegOutputLogs[jobId] = StringBuffer();
+
+      // Create a temporary file for progress output
+      final tempDir = await Directory.systemTemp.createTemp('ffmpeg_progress');
+      final progressFile = File('${tempDir.path}/progress.txt');
+      
+      // Send initial progress update
+      controller.add(0.01); // Start with 1% to show immediate visual feedback
 
       for (final folder in validatedJob.outputFolders) {
         var outputFilePath = '$folder/${validatedJob.outputFileName}';
@@ -261,6 +287,8 @@ class FFmpegService {
           '-i', validatedJob.filePath,
           '-ss', _formatDuration(validatedJob.startDuration),
           '-t', _formatDuration(Duration(milliseconds: durationMs)),
+          '-progress', progressFile.path, // Add progress output to file
+          '-stats', // Add more detailed stats
         ];
         
         // Add audio-only flag if needed
@@ -287,24 +315,61 @@ class FFmpegService {
         // Start FFmpeg process
         final process = await Process.start(ffmpegCommand, commandArgs);
 
-        // Handle stdout
+        // Set up a timer to read the progress file periodically
+        Timer? progressTimer;
+        progressTimer = Timer.periodic(Duration(milliseconds: 50), (timer) async {
+          try {
+            if (await progressFile.exists()) {
+              try {
+                final content = await progressFile.readAsString();
+                _parseProgressFile(content, validatedJob.startTime, validatedJob.endTime, controller, validatedJob.audioOnly, jobId);
+                
+                // Check if process is complete
+                if (content.contains('progress=end')) {
+                  _loggingService.debug('Progress file indicates completion', details: 'Found progress=end');
+                  timer.cancel();
+                  progressTimer = null;
+                  // Ensure we send 100% progress
+                  controller.add(1.0);
+                }
+              } catch (e) {
+                _loggingService.error('Error reading progress file', details: e.toString());
+              }
+            }
+          } catch (e) {
+            // Ignore file access errors
+          }
+        });
+
+        // Handle stdout - just log it, don't use for progress
         process.stdout.transform(utf8.decoder).listen((data) {
           _ffmpegOutputLogs[jobId]!.writeln('STDOUT: $data');
           _loggingService.debug('FFmpeg stdout', details: data);
-          // Parse FFmpeg output to update progress
-          _parseProgressFromOutput(data, validatedJob.startTime, validatedJob.endTime, controller);
         });
 
-        // Handle stderr
+        // Handle stderr - just log it, don't use for progress
         process.stderr.transform(utf8.decoder).listen((data) {
           _ffmpegOutputLogs[jobId]!.writeln('STDERR: $data');
           _loggingService.debug('FFmpeg stderr', details: data);
-          // FFmpeg outputs progress information to stderr
-          _parseProgressFromOutput(data, validatedJob.startTime, validatedJob.endTime, controller);
         });
 
         // Wait for process to complete
         final exitCode = await process.exitCode;
+        
+        // Cancel timer if still active
+        progressTimer?.cancel();
+        
+        // Clean up progress file and directory
+        try {
+          if (await progressFile.exists()) {
+            await progressFile.delete();
+          }
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        } catch (e) {
+          _loggingService.error('Error cleaning up progress files', details: e.toString());
+        }
         
         // Check if output file exists and has content
         final outputFile = File(outputFilePath);
@@ -347,46 +412,95 @@ class FFmpegService {
     }
   }
 
-  /// Parse progress information from FFmpeg output
-  void _parseProgressFromOutput(
-    String data, 
+  /// Parse progress information from progress file
+  void _parseProgressFile(
+    String content,
     double startTimeSeconds,
     double endTimeSeconds,
-    StreamController<double> controller
+    StreamController<double> controller,
+    bool isAudioOnly,
+    String jobId
   ) {
     try {
-      // FFmpeg outputs time information in format "time=HH:MM:SS.MS"
-      final timeMatch = RegExp(r'time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})').firstMatch(data);
+      _loggingService.debug('Parsing progress file', 
+          details: 'Job: $jobId, Audio only: $isAudioOnly');
       
-      if (timeMatch != null) {
-        final hours = int.parse(timeMatch.group(1)!);
-        final minutes = int.parse(timeMatch.group(2)!);
-        final seconds = int.parse(timeMatch.group(3)!);
-        final milliseconds = int.parse(timeMatch.group(4)!) * 10; // Convert to milliseconds
+      // Check for progress=end which indicates completion
+      if (content.contains('progress=end')) {
+        _loggingService.info('FFmpeg processing complete');
+        controller.add(1.0); // 100% complete
+        return;
+      }
+      
+      // Calculate the target duration (what we're trying to encode)
+      final targetDurationSec = endTimeSeconds - startTimeSeconds;
+      _loggingService.debug('Target duration', details: '${targetDurationSec.toStringAsFixed(3)}s');
+      
+      // Extract current output time from progress file
+      double? outputTimeSec = _extractTimeFromProgress(content);
+      
+      if (outputTimeSec != null && outputTimeSec > 0) {
+        _loggingService.debug('Raw output time', details: '${outputTimeSec.toStringAsFixed(3)}s');
         
-        final currentTime = Duration(
-          hours: hours,
-          minutes: minutes,
-          seconds: seconds,
-          milliseconds: milliseconds,
-        );
+        // Calculate progress as a percentage of the target duration
+        final progress = (outputTimeSec / targetDurationSec).clamp(0.0, 0.99);
+        _loggingService.info('Progress update', 
+            details: 'Time: ${outputTimeSec.toStringAsFixed(2)}s / ${targetDurationSec.toStringAsFixed(2)}s = ${(progress * 100).toStringAsFixed(1)}%');
+        controller.add(progress);
+      } else {
+        // If we can't determine time, check if we have frame data at least
+        final frameRegex = RegExp(r'frame=\s*([0-9]+)');
+        final frameMatches = frameRegex.allMatches(content).toList();
         
-        // Calculate total duration in milliseconds
-        final totalDurationMs = (endTimeSeconds - startTimeSeconds) * 1000;
-        final elapsedDurationMs = currentTime.inMilliseconds;
-        
-        // Calculate progress as a percentage of the total duration
-        final progress = elapsedDurationMs / totalDurationMs;
-        
-        // Clamp progress between 0.0 and 1.0
-        final clampedProgress = progress.clamp(0.0, 1.0);
-        
-        // Send progress update
-        controller.add(clampedProgress);
+        if (frameMatches.isNotEmpty && !content.contains('frame=0')) {
+          // We have some frame data, so processing has started
+          // Use a very small progress value to indicate we're just starting
+          controller.add(0.01); // 1% progress
+          _loggingService.info('Early progress', details: 'Processing started, minimal progress');
+        }
+        // Otherwise, don't send any progress update
       }
     } catch (e) {
-      _loggingService.error('Error parsing FFmpeg output', details: e.toString());
+      _loggingService.error('Error parsing FFmpeg progress file', details: e.toString());
     }
+  }
+  
+  /// Extract time in seconds from progress file content
+  double? _extractTimeFromProgress(String content) {
+    // Try to get time from out_time_ms (milliseconds)
+    final msRegex = RegExp(r'out_time_ms=([0-9]+)');
+    final msMatches = msRegex.allMatches(content).toList();
+    
+    if (msMatches.isNotEmpty) {
+      final msMatch = msMatches.last;
+      final msValue = msMatch.group(1)!;
+      final timeMs = int.tryParse(msValue);
+      
+      if (timeMs != null && timeMs > 0) {
+        // FFmpeg uses microseconds in out_time_ms despite the name
+        return timeMs / 1000000.0; // Convert microseconds to seconds
+      }
+    }
+    
+    // If out_time_ms didn't work, try out_time (HH:MM:SS.mmm format)
+    final timeRegex = RegExp(r'out_time=([0-9]+):([0-9]+):([0-9]+\.[0-9]+)');
+    final timeMatches = timeRegex.allMatches(content).toList();
+    
+    if (timeMatches.isNotEmpty) {
+      final timeMatch = timeMatches.last;
+      
+      try {
+        final hours = int.parse(timeMatch.group(1)!);
+        final minutes = int.parse(timeMatch.group(2)!);
+        final seconds = double.parse(timeMatch.group(3)!);
+        
+        return (hours * 3600) + (minutes * 60) + seconds;
+      } catch (e) {
+        return null;
+      }
+    }
+    
+    return null;
   }
 
   /// Format duration for FFmpeg (HH:MM:SS.mmm)

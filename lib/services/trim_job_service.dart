@@ -66,19 +66,37 @@ class TrimJobService {
     try {
       await _loggingService.info('Starting to process job', details: 'File: ${job.filePath}');
       
+      // Update job with initial progress to show immediate feedback
+      final initialJob = job.copyWith(progress: 0.01);
+      final index = _trimJobs.indexOf(job);
+      if (index != -1) {
+        _trimJobs[index] = initialJob;
+        _trimJobsController.add(_trimJobs);
+      }
+      
       // Use FFmpeg service to process the job
       final progressStream = _ffmpegService.processTrimJob(job);
       
       // Listen to progress updates
       await for (final progress in progressStream) {
-        // Update job progress
-        final updatedJob = job.copyWith(progress: progress);
+        // Find the current job in the list (it might have been replaced with a copy)
+        final jobIndex = _trimJobs.indexWhere((j) => j.filePath == job.filePath && 
+                                            j.startTime == job.startTime && 
+                                            j.endTime == job.endTime);
         
-        // Update job in list
-        final index = _trimJobs.indexOf(job);
-        if (index != -1) {
-          _trimJobs[index] = updatedJob;
-          _trimJobsController.add(_trimJobs);
+        if (jobIndex != -1) {
+          // Get the current job from the list
+          final currentJob = _trimJobs[jobIndex];
+          
+          // Update progress directly (since we made it mutable)
+          currentJob.progress = progress;
+          
+          // Log the progress update
+          await _loggingService.debug('Updated job progress', 
+              details: 'File: ${currentJob.filePath}, Progress: ${(progress * 100).toStringAsFixed(1)}%');
+          
+          // Immediately notify listeners of progress change
+          _trimJobsController.add(List<TrimJob>.from(_trimJobs));
         }
       }
       
