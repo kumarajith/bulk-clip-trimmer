@@ -86,7 +86,7 @@ class TrimJobsWidget extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '$fileName ($jobType)',
+                  '$fileName',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -96,6 +96,27 @@ class TrimJobsWidget extends StatelessWidget {
               if (job.error != null)
                 const Icon(Icons.error_outline, color: Colors.red),
             ],
+          ),
+          // Output file name and type
+          Padding(
+            padding: const EdgeInsets.only(top: 4.0),
+            child: Row(
+              children: [
+                Icon(
+                  job.audioOnly ? Icons.audiotrack : Icons.videocam,
+                  size: 14.0,
+                  color: theme.colorScheme.secondary,
+                ),
+                const SizedBox(width: 4.0),
+                Expanded(
+                  child: Text(
+                    '${job.outputFileName}${job.audioOnly ? '.m4a' : '.mp4'} ($jobType)',
+                    style: theme.textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
           SizedBox(height: 8.0),
           // Progress indicator and text
