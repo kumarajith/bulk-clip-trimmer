@@ -56,11 +56,27 @@ class AppStateProvider extends ChangeNotifier {
   /// Width of the playlist panel
   double _playlistPanelWidth = 300.0;
   
-  /// Subscription for trim jobs stream
-  late final StreamSubscription<List<TrimJob>> _trimJobsSubscription;
-
   /// Constructor
   AppStateProvider({required this.player}) {
+    _init();
+  }
+
+  /// Initialize the provider
+  Future<void> _init() async {
+    // Connect with the TrimJobService
+    _trimJobService.setAppStateProvider(this);
+    
+    // Listen to trim job updates
+    _trimJobService.trimJobsStream.listen((jobs) {
+      updateTrimJobs(jobs);
+    });
+    
+    // Load label folders
+    await _labelFolderService.loadLabelFolders();
+    
+    // Listen to label folder changes
+    _labelFolderService.labelFoldersNotifier.addListener(_onLabelFoldersChanged);
+    
     // Load initial data
     _loadInitialData();
 
@@ -69,29 +85,16 @@ class AppStateProvider extends ChangeNotifier {
       notifyListeners();
     });
     
-    // Listen to label folder changes
-    _labelFolderService.labelFoldersNotifier.addListener(_onLabelFoldersChanged);
-    
-    // Listen to trim job changes
-    _trimJobsSubscription = _trimJobService.trimJobsStream.listen(_onTrimJobsChanged);
-    
     // Log app startup
     _loggingService.info('AppStateProvider initialized');
+    
+    // Notify listeners
+    notifyListeners();
   }
   
   /// Handle label folders changes
   void _onLabelFoldersChanged() {
     // Just notify listeners when label folders change
-    notifyListeners();
-  }
-  
-  /// Handle trim jobs changes
-  void _onTrimJobsChanged(List<TrimJob> jobs) {
-    // Update our local list
-    _trimJobs.clear();
-    _trimJobs.addAll(jobs);
-    
-    // Notify listeners
     notifyListeners();
   }
 
@@ -102,9 +105,6 @@ class AppStateProvider extends ChangeNotifier {
       
       // Delete any existing trim jobs file
       await _trimJobService.deleteStorageFile();
-      
-      // Load label folders
-      await _labelFolderService.loadLabelFolders();
       
       await _loggingService.info('Initial data loaded successfully');
       notifyListeners();
@@ -131,6 +131,13 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Get the list of trim jobs
   List<TrimJob> get trimJobs => List.unmodifiable(_trimJobs);
+
+  /// Update the list of trim jobs
+  void updateTrimJobs(List<TrimJob> jobs) {
+    _trimJobs.clear();
+    _trimJobs.addAll(jobs);
+    notifyListeners();
+  }
 
   /// Get the list of label folders
   List<LabelFolder> get labelFolders => _labelFolderService.labelFolders;
@@ -293,6 +300,15 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
+  /// Update a trim job in the list
+  void updateTrimJob(TrimJob oldJob, TrimJob newJob) {
+    final index = _trimJobs.indexOf(oldJob);
+    if (index != -1) {
+      _trimJobs[index] = newJob;
+      notifyListeners();
+    }
+  }
+
   /// Add a trim job
   Future<void> addTrimJob() async {
     if (_currentVideo == null || _trimRange == null) {
@@ -383,21 +399,32 @@ class AppStateProvider extends ChangeNotifier {
         
         // Reset form
         _outputFileName = '';
-        
         notifyListeners();
-      } else {
-        _loggingService.warning('No output folders selected for trim job');
       }
     } catch (e) {
       _loggingService.error('Error adding trim job', details: e.toString());
     }
+  }
+  
+  /// Clear all completed jobs (progress = 1.0 or has error)
+  void clearCompletedJobs() {
+    // Keep only jobs that are not completed and don't have errors
+    _trimJobs.removeWhere((job) => job.progress >= 0.99 || job.progress < 0 || job.error != null);
+    _loggingService.info('Cleared completed jobs');
+    notifyListeners();
+  }
+  
+  /// Clear all jobs
+  void clearAllJobs() {
+    _trimJobs.clear();
+    _loggingService.info('Cleared all jobs');
+    notifyListeners();
   }
 
   @override
   void dispose() {
     player.dispose();
     _labelFolderService.labelFoldersNotifier.removeListener(_onLabelFoldersChanged);
-    _trimJobsSubscription.cancel();
     _loggingService.info('AppStateProvider disposed');
     super.dispose();
   }

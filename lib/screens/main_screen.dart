@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:provider/provider.dart';
 
 import '../providers/app_state_provider.dart';
 import '../widgets/video_player_widget.dart';
@@ -10,34 +11,27 @@ import '../widgets/trim_jobs_widget.dart';
 
 /// Main screen of the application
 class MainScreen extends StatelessWidget {
-  /// App state provider
-  final AppStateProvider appState;
-  
   /// Video controller
   final VideoController controller;
 
   /// Constructor
   const MainScreen({
     Key? key,
-    required this.appState,
     required this.controller,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final appState = Provider.of<AppStateProvider>(context);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bulk Clip Trimmer'),
         actions: [
           // Theme toggle button
           IconButton(
-            icon: AnimatedBuilder(
-              animation: appState,
-              builder: (context, _) {
-                return Icon(
-                  appState.isDarkMode ? Icons.light_mode : Icons.dark_mode,
-                );
-              },
+            icon: Icon(
+              appState.isDarkMode ? Icons.light_mode : Icons.dark_mode,
             ),
             onPressed: appState.toggleDarkMode,
             tooltip: 'Toggle theme',
@@ -57,7 +51,6 @@ class MainScreen extends StatelessWidget {
                     Expanded(
                       flex: 3,
                       child: VideoPlayerWidget(
-                        appState: appState,
                         controller: controller,
                       ),
                     ),
@@ -76,13 +69,13 @@ class MainScreen extends StatelessWidget {
                             // Label folders
                             Expanded(
                               flex: 2,
-                              child: LabelFoldersWidget(appState: appState),
+                              child: LabelFoldersWidget(),
                             ),
                             
                             // Trim form
                             Expanded(
                               flex: 1,
-                              child: TrimFormWidget(appState: appState),
+                              child: TrimFormWidget(),
                             ),
                           ],
                         ),
@@ -130,11 +123,14 @@ class MainScreen extends StatelessWidget {
                         // Playlist
                         Expanded(
                           flex: 2,
-                          child: PlaylistWidget(appState: appState),
+                          child: PlaylistWidget(),
                         ),
                         
                         // Trim jobs
-                        TrimJobsWidget(appState: appState),
+                        const Expanded(
+                          flex: 1,
+                          child: TrimJobsWidget(),
+                        ),
                       ],
                     ),
                   );

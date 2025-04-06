@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../models/trim_job.dart';
+import '../providers/app_state_provider.dart';
 import 'app_directory_service.dart';
 import 'ffmpeg_service.dart';
 import 'logging_service.dart';
@@ -23,17 +24,28 @@ class TrimJobService {
   /// Logging service
   final _loggingService = LoggingService();
 
+  /// FFmpeg service for video processing
+  final _ffmpegService = FFmpegService();
+
+  /// App state provider
+  AppStateProvider? _appStateProvider;
+
   /// Internal constructor
-  TrimJobService._internal();
+  TrimJobService._internal() {
+    // Delete any existing storage file on startup to ensure jobs don't persist
+    deleteStorageFile();
+  }
+
+  /// Set the app state provider
+  void setAppStateProvider(AppStateProvider provider) {
+    _appStateProvider = provider;
+  }
 
   /// List of trim jobs
   final List<TrimJob> _trimJobs = [];
 
   /// Stream controller for trim jobs
   final _trimJobsController = StreamController<List<TrimJob>>.broadcast();
-
-  /// FFmpeg service for video processing
-  final _ffmpegService = FFmpegService();
 
   /// Stream of trim jobs
   Stream<List<TrimJob>> get trimJobsStream => _trimJobsController.stream;
@@ -66,23 +78,41 @@ class TrimJobService {
     try {
       await _loggingService.info('Starting to process job', details: 'File: ${job.filePath}');
       
-      // Use FFmpeg service to process the job
-      final progressStream = _ffmpegService.processTrimJob(job);
+      // Update job status to processing
+      final processingJob = job.copyWith(progress: 0.01);
+      _updateJobInList(job, processingJob);
+      
+      // Create a stream to receive progress updates
+      final progressController = StreamController<double>();
       
       // Listen to progress updates
-      await for (final progress in progressStream) {
-        // Update job progress
-        final updatedJob = job.copyWith(progress: progress);
+      final subscription = progressController.stream.listen((progress) {
+        // Update job with new progress
+        final updatedJob = processingJob.copyWith(progress: progress);
+        _updateJobInList(processingJob, updatedJob);
         
-        // Update job in list
-        final index = _trimJobs.indexOf(job);
-        if (index != -1) {
-          _trimJobs[index] = updatedJob;
-          _trimJobsController.add(_trimJobs);
+        // Log progress at key milestones
+        if (progress == 0.01 || progress == 0.25 || progress == 0.5 || progress == 0.75 || progress >= 0.95) {
+          _loggingService.debug('Job progress update', 
+              details: 'File: ${job.filePath}, Progress: ${(progress * 100).toInt()}%');
         }
-      }
+      }, onError: (error) {
+        // Handle error
+        final errorJob = processingJob.copyWith(error: error.toString(), progress: -1.0);
+        _updateJobInList(processingJob, errorJob);
+        _loggingService.error('Error in job progress stream', details: error.toString());
+      });
       
-      // Job completed successfully
+      // Process the job with FFmpeg
+      await _ffmpegService.processTrimJob(job, progressController);
+      
+      // Clean up subscription
+      await subscription.cancel();
+      
+      // Update job status to completed
+      final completedJob = processingJob.copyWith(progress: 1.0);
+      _updateJobInList(processingJob, completedJob);
+      
       await _loggingService.info('Job processed successfully', details: 'File: ${job.filePath}');
       
       // Log the trim job details
@@ -97,14 +127,10 @@ class TrimJobService {
       
     } catch (e) {
       // Update job with error
-      final updatedJob = job.copyWith(error: e.toString());
+      final updatedJob = job.copyWith(error: e.toString(), progress: -1.0);
       
       // Update job in list
-      final index = _trimJobs.indexOf(job);
-      if (index != -1) {
-        _trimJobs[index] = updatedJob;
-        _trimJobsController.add(_trimJobs);
-      }
+      _updateJobInList(job, updatedJob);
       
       // Log the error
       await _loggingService.error('Error processing job', details: e.toString());
@@ -119,6 +145,18 @@ class TrimJobService {
         audioOnly: job.audioOnly,
         error: e.toString(),
       );
+    }
+  }
+  
+  /// Helper method to update a job in the list and notify listeners
+  void _updateJobInList(TrimJob oldJob, TrimJob newJob) {
+    final index = _trimJobs.indexOf(oldJob);
+    if (index != -1) {
+      _trimJobs[index] = newJob;
+      _trimJobsController.add(List.unmodifiable(_trimJobs));
+      
+      // Also update the job in the app state provider if available
+      _appStateProvider?.updateTrimJob(oldJob, newJob);
     }
   }
 

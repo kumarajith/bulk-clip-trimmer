@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/label_folder.dart';
 import '../providers/app_state_provider.dart';
@@ -6,13 +7,9 @@ import '../services/label_folder_service.dart';
 
 /// Widget for managing label folders
 class LabelFoldersWidget extends StatefulWidget {
-  /// App state provider
-  final AppStateProvider appState;
-
   /// Constructor
   const LabelFoldersWidget({
     Key? key,
-    required this.appState,
   }) : super(key: key);
 
   @override
@@ -22,6 +19,13 @@ class LabelFoldersWidget extends StatefulWidget {
 class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
   /// Label folder service
   final _labelFolderService = LabelFolderService();
+  late AppStateProvider _appState;
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appState = Provider.of<AppStateProvider>(context);
+  }
   
   /// Show the label folders configuration dialog
   Future<void> _showLabelFoldersDialog() async {
@@ -59,13 +63,13 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
             // Remove folders that no longer exist
             for (final label in existingLabels) {
               if (!newLabels.contains(label)) {
-                widget.appState.removeLabelFolder(label);
+                _appState.removeLabelFolder(label);
               }
             }
             
             // Add or update label folders
             for (final labelFolder in validFolders) {
-              widget.appState.addLabelFolder(labelFolder);
+              _appState.addLabelFolder(labelFolder);
             }
           },
         );
@@ -139,7 +143,7 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                                 ),
                                 selected: labelFolder.isSelected,
                                 onSelected: (selected) {
-                                  widget.appState.toggleLabelSelection(labelFolder.label);
+                                  _appState.toggleLabelSelection(labelFolder.label);
                                 },
                                 tooltip: '${labelFolder.folderPath}${labelFolder.audioOnly ? ' (Audio Only)' : ''}',
                               );
@@ -172,7 +176,7 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                                     ),
                                     label: Text(folder.audioOnly ? 'Audio Only' : 'Video + Audio'),
                                     onPressed: () {
-                                      widget.appState.toggleAudioOnly(folder.label);
+                                      _appState.toggleAudioOnly(folder.label);
                                     },
                                     style: TextButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),

@@ -1,114 +1,130 @@
 import 'package:flutter/material.dart';
-
+import 'package:provider/provider.dart';
 import '../models/trim_job.dart';
 import '../providers/app_state_provider.dart';
 
 /// Widget for displaying trim jobs
 class TrimJobsWidget extends StatelessWidget {
-  /// App state provider
-  final AppStateProvider appState;
-
-  /// Constructor
-  const TrimJobsWidget({
-    Key? key,
-    required this.appState,
-  }) : super(key: key);
+  const TrimJobsWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: appState,
-      builder: (context, _) {
-        final showJobsPanel = appState.showJobsPanel;
-        final trimJobs = appState.trimJobs;
-        
+    return Consumer<AppStateProvider>(
+      builder: (context, appState, child) {
         return Column(
-          mainAxisSize: MainAxisSize.min, // Set to min to avoid unbounded height issues
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Panel header
-            InkWell(
-              onTap: appState.toggleJobsPanel,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                color: Theme.of(context).colorScheme.primaryContainer,
-                child: Row(
-                  children: [
-                    Icon(showJobsPanel ? Icons.arrow_drop_down : Icons.arrow_drop_up),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Trim Jobs',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 8),
-                    if (trimJobs.isNotEmpty)
-                      Chip(
-                        label: Text(trimJobs.length.toString()),
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        labelStyle: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimary,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Trim Jobs',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  Row(
+                    children: [
+                      if (appState.trimJobs.isNotEmpty)
+                        TextButton.icon(
+                          onPressed: () {
+                            appState.clearCompletedJobs();
+                          },
+                          icon: const Icon(Icons.check_circle_outline),
+                          label: const Text('Clear Completed'),
                         ),
-                      ),
-                  ],
-                ),
+                      if (appState.trimJobs.isNotEmpty)
+                        TextButton.icon(
+                          onPressed: () {
+                            appState.clearAllJobs();
+                          },
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Clear All'),
+                        ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            
-            // Jobs list with AnimatedContainer for smooth transitions
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              height: showJobsPanel ? 200.0 : 0.0, // Fixed height that animates between 0 and 200
-              child: showJobsPanel ? Container(
-                child: trimJobs.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No trim jobs. Add a job using the form above.',
-                        style: TextStyle(color: Theme.of(context).hintColor),
-                      ),
-                    )
-                  : ListView.builder(
-                      shrinkWrap: true, // Important to avoid unbounded height issues
-                      itemCount: trimJobs.length,
+            Expanded(
+              child: appState.trimJobs.isNotEmpty
+                  ? ListView.builder(
+                      itemCount: appState.trimJobs.length,
                       itemBuilder: (context, index) {
-                        final job = trimJobs[index];
-                        final fileName = job.filePath.split('/').last;
-                        
-                        return ListTile(
-                          title: Text(
-                            '${job.outputFileName} (${job.audioOnly ? 'Audio Only' : 'Video'})',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Source: $fileName',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text('Trim: ${_formatDuration(job.startDuration)} - ${_formatDuration(job.endDuration)}'),
-                              if (job.error != null)
+                        final job = appState.trimJobs[index];
+                        final duration = Duration(
+                          milliseconds:
+                              ((job.endTime - job.startTime) * 1000).toInt(),
+                        );
+
+                        return Card(
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 16.0, vertical: 4.0),
+                          child: ListTile(
+                            title: Text(
+                              job.outputFileName,
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
-                                  'Error: ${job.error}',
-                                  style: const TextStyle(color: Colors.red),
-                                  overflow: TextOverflow.ellipsis,
+                                  'Duration: ${_formatDuration(duration)}',
+                                  style: Theme.of(context).textTheme.bodySmall,
                                 ),
-                              LinearProgressIndicator(
-                                value: job.progress >= 0 ? job.progress : 0,
-                                backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  job.progress == 1.0
-                                      ? Colors.green
-                                      : job.progress < 0
+                                if (job.error != null)
+                                  Text(
+                                    'Error: ${job.error}',
+                                    style: const TextStyle(color: Colors.red),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                // Progress indicator with animation
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  height: 8,
+                                  margin: const EdgeInsets.symmetric(vertical: 4),
+                                  child: LinearProgressIndicator(
+                                    value: job.progress >= 0 
+                                        ? job.progress > 0.99 ? 1.0 : job.progress // Ensure 100% is shown when complete
+                                        : 0,
+                                    backgroundColor: Colors.grey[200],
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      job.progress < 0
                                           ? Colors.red
-                                          : Theme.of(context).colorScheme.primary,
+                                          : job.progress > 0.95
+                                              ? Colors.lightGreen
+                                              : Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 4),
+                                // Status text with animation
+                                AnimatedDefaultTextStyle(
+                                  duration: const Duration(milliseconds: 300),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: job.progress == 1.0 || job.progress < 0 ? FontWeight.bold : FontWeight.normal,
+                                    color: job.progress == 1.0
+                                        ? Colors.green
+                                        : job.progress < 0
+                                            ? Colors.red
+                                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                  child: Text(_getJobStatusText(job)),
+                                ),
+                              ],
+                            ),
+                            trailing: _buildJobStatusIcon(job),
                           ),
-                          trailing: _buildJobStatusIcon(job),
                         );
                       },
+                    )
+                  : Center(
+                      child: Text(
+                        'No trim jobs',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
                     ),
-              ) : null,
             ),
           ],
         );
@@ -116,24 +132,45 @@ class TrimJobsWidget extends StatelessWidget {
     );
   }
 
-  /// Build an icon representing the job status
-  Widget _buildJobStatusIcon(TrimJob job) {
-    if (job.progress == 1.0) {
-      return const Icon(Icons.check_circle, color: Colors.green);
-    } else if (job.error != null || job.progress < 0) {
-      return const Icon(Icons.error, color: Colors.red);
-    } else if (job.progress > 0) {
-      return const Icon(Icons.hourglass_bottom, color: Colors.orange);
-    } else {
-      return const Icon(Icons.pending, color: Colors.grey);
-    }
+  /// Format a duration as mm:ss
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.toString().padLeft(2, '0');
+    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
-  /// Format duration as MM:SS
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return "$minutes:$seconds";
+  /// Get status text for a job
+  String _getJobStatusText(TrimJob job) {
+    if (job.error != null) {
+      return 'Failed';
+    }
+    if (job.progress < 0) {
+      return 'Error';
+    }
+    if (job.progress >= 0.99) {
+      return 'Completed';
+    }
+    if (job.progress > 0) {
+      return 'Processing (${(job.progress * 100).toInt()}%)';
+    }
+    return 'Pending';
+  }
+
+  /// Build status icon for a job
+  Widget _buildJobStatusIcon(TrimJob job) {
+    if (job.error != null || job.progress < 0) {
+      return const Icon(Icons.error_outline, color: Colors.red);
+    }
+    if (job.progress >= 0.99) {
+      return const Icon(Icons.check_circle_outline, color: Colors.green);
+    }
+    if (job.progress > 0) {
+      return const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    return const Icon(Icons.hourglass_empty, color: Colors.grey);
   }
 }

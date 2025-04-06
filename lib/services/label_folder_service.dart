@@ -49,18 +49,43 @@ class LabelFolderService {
 
       if (await file.exists()) {
         final jsonString = await file.readAsString();
-        final jsonList = jsonDecode(jsonString) as List<dynamic>;
         
-        _labelFolders.clear();
-        _labelFolders.addAll(
-          jsonList.map((json) => LabelFolder.fromMap(json as Map<String, dynamic>)).toList(),
-        );
+        // Check if the file is empty or contains invalid JSON
+        if (jsonString.trim().isEmpty) {
+          await _loggingService.warning('Label folders file exists but is empty');
+          return [];
+        }
         
-        _labelFoldersController.value = List.from(_labelFolders);
-        await _loggingService.info('Loaded ${_labelFolders.length} label folders');
-        return _labelFolders;
+        try {
+          final jsonList = jsonDecode(jsonString) as List<dynamic>;
+          
+          _labelFolders.clear();
+          _labelFolders.addAll(
+            jsonList.map((json) => LabelFolder.fromMap(json as Map<String, dynamic>)).toList(),
+          );
+          
+          _labelFoldersController.value = List.from(_labelFolders);
+          await _loggingService.info('Loaded ${_labelFolders.length} label folders');
+          await _loggingService.debug('Label folders file path', details: filePath);
+          return _labelFolders;
+        } catch (jsonError) {
+          await _loggingService.error('Error parsing label folders JSON', details: jsonError.toString());
+          // Create a backup of the corrupted file
+          final backupPath = '$filePath.bak.${DateTime.now().millisecondsSinceEpoch}';
+          await file.copy(backupPath);
+          await _loggingService.info('Created backup of corrupted label folders file', details: backupPath);
+          
+          // Return empty list and create a new file later
+          return [];
+        }
       } else {
         await _loggingService.info('No label folders file found, starting with empty list');
+        await _loggingService.debug('Expected label folders file path', details: filePath);
+        
+        // Create an empty file
+        await file.create(recursive: true);
+        await file.writeAsString('[]');
+        await _loggingService.info('Created empty label folders file');
       }
     } catch (e) {
       await _loggingService.error('Error loading label folders', details: e.toString());

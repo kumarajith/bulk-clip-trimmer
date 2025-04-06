@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:provider/provider.dart';
 import 'package:rxdart/rxdart.dart';
 
 import '../providers/app_state_provider.dart';
@@ -8,16 +9,12 @@ import 'video_trim_seekbar.dart';
 
 /// Widget for video playback with controls
 class VideoPlayerWidget extends StatefulWidget {
-  /// App state provider
-  final AppStateProvider appState;
-  
   /// Video controller
   final VideoController controller;
 
   /// Constructor
   const VideoPlayerWidget({
     Key? key,
-    required this.appState,
     required this.controller,
   }) : super(key: key);
 
@@ -28,21 +25,32 @@ class VideoPlayerWidget extends StatefulWidget {
 class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   /// Stream for position and duration updates
   late Stream<Map<String, Duration>> _positionAndDurationStream;
+  late AppStateProvider _appState;
 
   @override
   void initState() {
     super.initState();
     
+    // We'll set up the stream in didChangeDependencies
+  }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Get the app state provider
+    _appState = Provider.of<AppStateProvider>(context);
+    
     // Combine position and duration streams
     _positionAndDurationStream = Rx.combineLatest2<Duration, Duration, Map<String, Duration>>(
-      widget.appState.player.stream.position,
-      widget.appState.player.stream.duration,
+      _appState.player.stream.position,
+      _appState.player.stream.duration,
       (position, duration) => {'position': position, 'duration': duration},
     );
     
     // Set default volume to 40%
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.appState.player.setVolume(40.0);
+      _appState.player.setVolume(40.0);
     });
   }
 
@@ -53,7 +61,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       onKeyEvent: (node, event) {
         // Handle space key for play/pause
         if (event.logicalKey == LogicalKeyboardKey.space && event is KeyDownEvent) {
-          widget.appState.togglePlayPause();
+          _appState.togglePlayPause();
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;
@@ -85,12 +93,12 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
               children: [
                 // Play/Pause button
                 StreamBuilder<bool>(
-                  stream: widget.appState.player.stream.playing,
+                  stream: _appState.player.stream.playing,
                   builder: (context, snapshot) {
                     final isPlaying = snapshot.data ?? false;
                     return IconButton(
                       icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                      onPressed: widget.appState.togglePlayPause,
+                      onPressed: _appState.togglePlayPause,
                     );
                   },
                 ),
@@ -112,10 +120,10 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                         duration: duration,
                         position: position,
                         onPositionChange: (newPosition) async {
-                          await widget.appState.player.seek(newPosition);
+                          await _appState.player.seek(newPosition);
                         },
                         onTrimChange: (newRange) {
-                          widget.appState.setTrimRange(newRange);
+                          _appState.setTrimRange(newRange);
                         },
                       );
                     },
@@ -126,7 +134,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                 Expanded(
                   flex: 1, // 10% of the space
                   child: StreamBuilder<double>(
-                    stream: widget.appState.player.stream.volume,
+                    stream: _appState.player.stream.volume,
                     builder: (context, snapshot) {
                       final volume = snapshot.data ?? 40.0; // Default to 40%
                       return Row(
@@ -140,7 +148,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                               max: 100.0,
                               divisions: 20,
                               onChanged: (value) {
-                                widget.appState.player.setVolume(value);
+                                _appState.player.setVolume(value);
                               },
                             ),
                           ),

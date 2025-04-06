@@ -1,16 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../providers/app_state_provider.dart';
 
 /// Widget for the trim job form
 class TrimFormWidget extends StatefulWidget {
-  /// App state provider
-  final AppStateProvider appState;
-
   /// Constructor
   const TrimFormWidget({
     Key? key,
-    required this.appState,
   }) : super(key: key);
 
   @override
@@ -20,11 +17,18 @@ class TrimFormWidget extends StatefulWidget {
 class _TrimFormWidgetState extends State<TrimFormWidget> {
   /// Controller for the output file name field
   final _fileNameController = TextEditingController();
+  late AppStateProvider _appState;
 
   @override
   void initState() {
     super.initState();
     _fileNameController.addListener(_updateOutputFileName);
+  }
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appState = Provider.of<AppStateProvider>(context);
   }
 
   @override
@@ -36,17 +40,17 @@ class _TrimFormWidgetState extends State<TrimFormWidget> {
 
   /// Update the output file name in the app state
   void _updateOutputFileName() {
-    widget.appState.setOutputFileName(_fileNameController.text);
+    _appState.setOutputFileName(_fileNameController.text);
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: widget.appState,
+      animation: _appState,
       builder: (context, _) {
-        final hasVideo = widget.appState.currentVideo != null;
-        final hasTrimRange = widget.appState.trimRange != null;
-        final hasLabels = widget.appState.labelFolders.any((lf) => lf.isSelected);
+        final hasVideo = _appState.currentVideo != null;
+        final hasTrimRange = _appState.trimRange != null;
+        final hasLabels = _appState.labelFolders.any((lf) => lf.isSelected);
         
         // Check if form is valid
         final isFormValid = hasVideo && 
@@ -94,7 +98,7 @@ class _TrimFormWidgetState extends State<TrimFormWidget> {
                           child: ElevatedButton.icon(
                             icon: const Icon(Icons.add),
                             label: const Text('Add to Queue'),
-                            onPressed: isFormValid ? widget.appState.addTrimJob : null,
+                            onPressed: isFormValid ? _appState.addTrimJob : null,
                           ),
                         ),
                         
