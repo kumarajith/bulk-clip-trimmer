@@ -1,0 +1,105 @@
+# Bulk Clip Trimmer - Windsurfrules
+
+## Application Overview
+
+**Bulk Clip Trimmer** is a Flutter application designed for efficiently trimming video files in batch. It provides a custom seekbar for precise trim area selection and supports organizing output files into labeled folders.
+
+---
+
+## Core Architecture
+
+The application follows a clean architecture approach with:
+
+### Models
+- **VideoFile**: Represents a video file with path information  
+- **TrimJob**: Defines a video trimming task with source, output, and trim parameters  
+- **LabelFolder**: Associates labels with output folders and settings
+
+### Services
+- **VideoService**: Handles video file operations (picking, scanning directories)  
+- **FFmpegService**: Manages video processing using FFmpeg  
+- **TrimJobService**: Manages trim job queue and processing  
+- **LabelFolderService**: Manages labeled output folders
+
+### Providers
+- **AppStateProvider**: Central state management for the application
+
+### Widgets
+- **VideoPlayerWidget**: Video playback with controls  
+- **VideoTrimSeekBar**: Custom seekbar with trim handles  
+- **PlaylistWidget**: Video playlist management  
+- **LabelFoldersWidget**: Output folder configuration  
+- **TrimFormWidget**: Form for creating trim jobs  
+- **TrimJobsWidget**: Queue of pending and completed jobs
+
+### Screens
+- **MainScreen**: Main application layout
+
+---
+
+## Key Features and Functionality
+
+### Video Management
+- Load videos from files or directories  
+- Display videos in a playlist  
+- Play selected videos with basic controls (play/pause, volume)
+
+### Trim Controls
+- Custom seekbar with trim handles for selecting start/end points  
+- Visual indication of trim area  
+- Keyboard shortcuts for playback control
+
+### Output Management
+- Create and manage labeled output folders  
+- Toggle audio-only extraction per folder  
+- Select multiple output destinations for a single trim job
+
+### Batch Processing
+- Queue multiple trim jobs  
+- Process jobs in the background  
+- Track progress of each job  
+- Error handling for failed jobs
+
+---
+
+## Development Guidelines
+
+### Adding New Features
+- **New Output Formats**: Extend the `FFmpegService` to support additional output formats  
+- **Additional Video Effects**: Implement in the `FFmpegService` with appropriate UI controls  
+- **Batch Rename**: Consider adding to the `TrimFormWidget` with pattern support
+
+### Code Style and Patterns
+- Follow Flutter/Dart style guidelines  
+- Use the existing provider pattern for state management  
+- Keep UI components modular and reusable  
+- Document all public methods and classes
+
+---
+
+## Dependencies
+- `media_kit`: Video playback  
+- `rxdart`: Reactive programming  
+- `file_picker`: File and directory selection  
+- `path_provider`: System directory access  
+- `video_thumbnail`: Thumbnail generation
+
+---
+
+## Technical Requirements
+- FFmpeg must be installed and available in the system `PATH`  
+- Flutter SDK 3.2.6 or higher  
+- Sufficient disk space for video processing
+
+---
+
+## Common Operations
+
+- **Adding a video**: Use `VideoService.pickVideoFile()` or `VideoService.pickDirectoryAndScanVideos()`  
+- **Creating a trim job**: Use `AppStateProvider.addTrimJob()`  
+- **Managing output folders**: Use `LabelFolderService` methods  
+- **Processing jobs**: Handled automatically by `TrimJobService.processJobs()`
+
+---
+
+This documentation should serve as a comprehensive guide for understanding and extending the **Bulk Clip Trimmer** application.
