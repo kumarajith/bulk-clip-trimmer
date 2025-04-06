@@ -28,9 +28,6 @@ class AppStateProvider extends ChangeNotifier {
   /// List of trim jobs
   final List<TrimJob> _trimJobs = [];
 
-  /// List of label folders
-  final List<LabelFolder> _labelFolders = [];
-
   /// Current video being played
   VideoFile? _currentVideo;
 
@@ -55,14 +52,22 @@ class AppStateProvider extends ChangeNotifier {
     player.streams.position.listen((position) {
       notifyListeners();
     });
+    
+    // Listen to label folder changes
+    _labelFolderService.labelFoldersNotifier.addListener(_onLabelFoldersChanged);
+  }
+  
+  /// Handle label folders changes
+  void _onLabelFoldersChanged() {
+    // Just notify listeners when label folders change
+    notifyListeners();
   }
 
   /// Load initial data
   Future<void> _loadInitialData() async {
     try {
       // Load label folders
-      final folders = await _labelFolderService.loadLabelFolders();
-      _labelFolders.addAll(folders);
+      await _labelFolderService.loadLabelFolders();
       
       // Load trim jobs
       final jobs = await _trimJobService.loadTrimJobs();
@@ -81,7 +86,7 @@ class AppStateProvider extends ChangeNotifier {
   List<TrimJob> get trimJobs => List.unmodifiable(_trimJobs);
 
   /// Get the list of label folders
-  List<LabelFolder> get labelFolders => List.unmodifiable(_labelFolders);
+  List<LabelFolder> get labelFolders => _labelFolderService.labelFolders;
 
   /// Get the current video
   VideoFile? get currentVideo => _currentVideo;
@@ -183,47 +188,40 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Add a label folder
   void addLabelFolder(LabelFolder labelFolder) {
-    if (!_labelFolders.contains(labelFolder)) {
-      _labelFolders.add(labelFolder);
-      _labelFolderService.saveLabelFolders();
-      notifyListeners();
-    }
+    _labelFolderService.addLabelFolder(labelFolder);
+    // Notification will happen via the listener
   }
 
   /// Remove a label folder
   void removeLabelFolder(String label) {
-    _labelFolders.removeWhere((lf) => lf.label == label);
-    _labelFolderService.saveLabelFolders();
-    notifyListeners();
+    _labelFolderService.removeLabelFolder(label);
+    // Notification will happen via the listener
   }
 
   /// Toggle label selection
   void toggleLabelSelection(String label) {
-    final index = _labelFolders.indexWhere((lf) => lf.label == label);
-    if (index != -1) {
-      _labelFolders[index] = _labelFolders[index].copyWith(
-        isSelected: !_labelFolders[index].isSelected,
-      );
-      notifyListeners();
-    }
+    _labelFolderService.toggleLabelFolderSelection(label);
+    // Notification will happen via the listener
   }
 
   /// Toggle audio only for a label folder
   void toggleAudioOnly(String label) {
-    final index = _labelFolders.indexWhere((lf) => lf.label == label);
-    if (index != -1) {
-      _labelFolders[index] = _labelFolders[index].copyWith(
-        audioOnly: !_labelFolders[index].audioOnly,
-      );
-      _labelFolderService.saveLabelFolders();
-      notifyListeners();
+    final folder = _labelFolderService.labelFolders.firstWhere(
+      (lf) => lf.label == label,
+      orElse: () => LabelFolder(label: '', folderPath: ''),
+    );
+    
+    if (folder.label.isNotEmpty) {
+      final updatedFolder = folder.copyWith(audioOnly: !folder.audioOnly);
+      _labelFolderService.updateLabelFolder(updatedFolder);
+      // Notification will happen via the listener
     }
   }
 
   /// Add a trim job
   void addTrimJob() {
     if (_currentVideo != null && _trimRange != null && _outputFileName.isNotEmpty) {
-      final selectedFolders = _labelFolders.where((lf) => lf.isSelected).toList();
+      final selectedFolders = _labelFolderService.getSelectedLabelFolders();
       
       if (selectedFolders.isNotEmpty) {
         // Create a job for each selected folder
@@ -267,6 +265,7 @@ class AppStateProvider extends ChangeNotifier {
   @override
   void dispose() {
     player.dispose();
+    _labelFolderService.labelFoldersNotifier.removeListener(_onLabelFoldersChanged);
     super.dispose();
   }
 }
