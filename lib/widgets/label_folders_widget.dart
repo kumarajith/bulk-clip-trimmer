@@ -82,6 +82,7 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header row with settings button - keep this fixed
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Row(
@@ -99,88 +100,95 @@ class _LabelFoldersWidgetState extends State<LabelFoldersWidget> {
                 ],
               ),
             ),
-            if (labelFolders.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  'No output folders configured. Click the settings icon to add folders.',
-                  style: TextStyle(color: Theme.of(context).hintColor),
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 8.0,
-                      runSpacing: 4.0,
-                      children: labelFolders.map((labelFolder) {
-                        return FilterChip(
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(labelFolder.label),
-                              if (labelFolder.audioOnly)
-                                Padding(
-                                  padding: const EdgeInsets.only(left: 4.0),
-                                  child: Icon(
-                                    Icons.music_note,
-                                    size: 16,
-                                    color: Theme.of(context).colorScheme.onSurface,
-                                  ),
+            
+            // Make the content area scrollable
+            Expanded(
+              child: SingleChildScrollView(
+                child: labelFolders.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text(
+                        'No output folders configured. Click the settings icon to add folders.',
+                        style: TextStyle(color: Theme.of(context).hintColor),
+                      ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8.0,
+                            runSpacing: 4.0,
+                            children: labelFolders.map((labelFolder) {
+                              return FilterChip(
+                                label: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(labelFolder.label),
+                                    if (labelFolder.audioOnly)
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 4.0),
+                                        child: Icon(
+                                          Icons.music_note,
+                                          size: 16,
+                                          color: Theme.of(context).colorScheme.onSurface,
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                            ],
+                                selected: labelFolder.isSelected,
+                                onSelected: (selected) {
+                                  widget.appState.toggleLabelSelection(labelFolder.label);
+                                },
+                                tooltip: '${labelFolder.folderPath}${labelFolder.audioOnly ? ' (Audio Only)' : ''}',
+                              );
+                            }).toList(),
                           ),
-                          selected: labelFolder.isSelected,
-                          onSelected: (selected) {
-                            widget.appState.toggleLabelSelection(labelFolder.label);
-                          },
-                          tooltip: '${labelFolder.folderPath}${labelFolder.audioOnly ? ' (Audio Only)' : ''}',
-                        );
-                      }).toList(),
+                          const SizedBox(height: 8),
+                          // Display details of selected folders with audio toggle
+                          ...labelFolders.where((lf) => lf.isSelected).map((folder) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    folder.audioOnly ? Icons.music_note : Icons.videocam,
+                                    size: 16,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      folder.label,
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    icon: Icon(
+                                      folder.audioOnly ? Icons.music_note : Icons.videocam,
+                                      size: 16,
+                                    ),
+                                    label: Text(folder.audioOnly ? 'Audio Only' : 'Video + Audio'),
+                                    onPressed: () {
+                                      widget.appState.toggleAudioOnly(folder.label);
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    // Display details of selected folders with audio toggle
-                    ...labelFolders.where((lf) => lf.isSelected).map((folder) {
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Row(
-                          children: [
-                            Icon(
-                              folder.audioOnly ? Icons.music_note : Icons.videocam,
-                              size: 16,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              folder.label,
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(width: 8),
-                            TextButton.icon(
-                              icon: Icon(
-                                folder.audioOnly ? Icons.music_note : Icons.videocam,
-                                size: 16,
-                              ),
-                              label: Text(folder.audioOnly ? 'Audio Only' : 'Video + Audio'),
-                              onPressed: () {
-                                widget.appState.toggleAudioOnly(folder.label);
-                              },
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ],
-                ),
               ),
+            ),
           ],
         );
       },

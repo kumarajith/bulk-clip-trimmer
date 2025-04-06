@@ -39,6 +39,11 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       widget.appState.player.stream.duration,
       (position, duration) => {'position': position, 'duration': duration},
     );
+    
+    // Set default volume to 40%
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.appState.player.setVolume(40.0);
+    });
   }
 
   @override
@@ -74,74 +79,78 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
           ),
           
           // Playback controls
-          Row(
-            children: [
-              // Play/Pause button
-              StreamBuilder<bool>(
-                stream: widget.appState.player.stream.playing,
-                builder: (context, snapshot) {
-                  final isPlaying = snapshot.data ?? false;
-                  return IconButton(
-                    icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                    onPressed: widget.appState.togglePlayPause,
-                  );
-                },
-              ),
-              
-              // Seekbar
-              Expanded(
-                child: StreamBuilder<Map<String, Duration>>(
-                  stream: _positionAndDurationStream,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Row(
+              children: [
+                // Play/Pause button
+                StreamBuilder<bool>(
+                  stream: widget.appState.player.stream.playing,
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const LinearProgressIndicator();
-                    }
-
-                    final position = snapshot.data!['position'] ?? Duration.zero;
-                    final duration = snapshot.data!['duration'] ?? Duration.zero;
-                    
-                    return VideoTrimSeekBar(
-                      duration: duration,
-                      position: position,
-                      onPositionChange: (newPosition) async {
-                        await widget.appState.player.seek(newPosition);
-                      },
-                      onTrimChange: (newRange) {
-                        widget.appState.setTrimRange(newRange);
-                      },
+                    final isPlaying = snapshot.data ?? false;
+                    return IconButton(
+                      icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
+                      onPressed: widget.appState.togglePlayPause,
                     );
                   },
                 ),
-              ),
-              
-              // Volume control
-              StreamBuilder<double>(
-                stream: widget.appState.player.stream.volume,
-                builder: (context, snapshot) {
-                  final volume = snapshot.data ?? 0.0;
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.volume_up),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 100,
-                        child: Slider(
-                          value: volume,
-                          min: 0.0,
-                          max: 100.0,
-                          divisions: 20,
-                          label: '${volume.round()}',
-                          onChanged: (value) {
-                            widget.appState.player.setVolume(value);
-                          },
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
+                
+                // Seekbar - now takes 90% of available space
+                Expanded(
+                  flex: 9, // 90% of the space
+                  child: StreamBuilder<Map<String, Duration>>(
+                    stream: _positionAndDurationStream,
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const LinearProgressIndicator();
+                      }
+
+                      final position = snapshot.data!['position'] ?? Duration.zero;
+                      final duration = snapshot.data!['duration'] ?? Duration.zero;
+                      
+                      return VideoTrimSeekBar(
+                        duration: duration,
+                        position: position,
+                        onPositionChange: (newPosition) async {
+                          await widget.appState.player.seek(newPosition);
+                        },
+                        onTrimChange: (newRange) {
+                          widget.appState.setTrimRange(newRange);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                
+                // Volume control - now takes 10% of available space
+                Expanded(
+                  flex: 1, // 10% of the space
+                  child: StreamBuilder<double>(
+                    stream: widget.appState.player.stream.volume,
+                    builder: (context, snapshot) {
+                      final volume = snapshot.data ?? 40.0; // Default to 40%
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.volume_up, size: 18),
+                          Expanded(
+                            child: Slider(
+                              value: volume,
+                              min: 0.0,
+                              max: 100.0,
+                              divisions: 20,
+                              onChanged: (value) {
+                                widget.appState.player.setVolume(value);
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

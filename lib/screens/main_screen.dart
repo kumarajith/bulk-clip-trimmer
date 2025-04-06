@@ -44,69 +44,76 @@ class MainScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Row(
-        children: [
-          // Left panel - Video player and controls
-          Expanded(
-            flex: 3,
-            child: Column(
-              children: [
-                // Video player
-                Expanded(
-                  flex: 3,
-                  child: VideoPlayerWidget(
-                    appState: appState,
-                    controller: controller,
-                  ),
-                ),
-                
-                // Divider
-                const Divider(height: 1),
-                
-                // Bottom panel - Label folders and trim form
-                Expanded(
-                  flex: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Label folders
-                        Expanded(
-                          flex: 2,
-                          child: LabelFoldersWidget(appState: appState),
-                        ),
-                        
-                        // Trim form
-                        Expanded(
-                          flex: 1,
-                          child: TrimFormWidget(appState: appState),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Responsive layout adjustments
+          final isNarrow = constraints.maxWidth < 900;
           
-          // Right panel - Playlist and jobs
-          SizedBox(
-            width: 300,
-            child: Column(
-              children: [
-                // Playlist
-                Expanded(
-                  flex: 2,
-                  child: PlaylistWidget(appState: appState),
+          return Row(
+            children: [
+              // Left panel - Video player and controls
+              Expanded(
+                flex: 3,
+                child: Column(
+                  children: [
+                    // Video player
+                    Expanded(
+                      flex: 3,
+                      child: VideoPlayerWidget(
+                        appState: appState,
+                        controller: controller,
+                      ),
+                    ),
+                    
+                    // Divider
+                    const Divider(height: 1),
+                    
+                    // Bottom panel - Label folders and trim form
+                    Expanded(
+                      flex: 1,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Label folders
+                            Expanded(
+                              flex: 2,
+                              child: LabelFoldersWidget(appState: appState),
+                            ),
+                            
+                            // Trim form
+                            Expanded(
+                              flex: 1,
+                              child: TrimFormWidget(appState: appState),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                
-                // Trim jobs
-                TrimJobsWidget(appState: appState),
-              ],
-            ),
-          ),
-        ],
+              ),
+              
+              // Right panel - Playlist and jobs
+              Container(
+                width: isNarrow ? 250 : 300,
+                child: Column(
+                  children: [
+                    // Playlist
+                    Expanded(
+                      flex: 2,
+                      child: PlaylistWidget(appState: appState),
+                    ),
+                    
+                    // Trim jobs
+                    TrimJobsWidget(appState: appState),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

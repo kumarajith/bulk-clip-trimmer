@@ -54,72 +54,82 @@ class _TrimFormWidgetState extends State<TrimFormWidget> {
                            hasLabels && 
                            _fileNameController.text.isNotEmpty;
         
-        return Card(
-          margin: const EdgeInsets.all(8.0),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Form title
-                Text(
-                  'Trim Settings',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 16),
-                
-                // Output file name
-                TextField(
-                  controller: _fileNameController,
-                  decoration: InputDecoration(
-                    labelText: 'Output File Name',
-                    hintText: 'Enter output file name',
-                    border: const OutlineInputBorder(),
-                    errorText: _fileNameController.text.isEmpty && hasVideo
-                        ? 'Please enter a file name'
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                // Add to queue button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add to Queue'),
-                    onPressed: isFormValid ? widget.appState.addTrimJob : null,
-                  ),
-                ),
-                
-                // Form validation messages
-                if (!hasVideo || !hasTrimRange || !hasLabels)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
+        // Use LayoutBuilder to make the widget responsive
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            return Card(
+              margin: const EdgeInsets.all(8.0),
+              child: SizedBox(
+                height: constraints.maxHeight,
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (!hasVideo)
-                          const Text(
-                            '• Select a video from the playlist',
-                            style: TextStyle(color: Colors.red),
+                        // Form title
+                        Text(
+                          'Trim Settings',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Output file name
+                        TextField(
+                          controller: _fileNameController,
+                          decoration: InputDecoration(
+                            labelText: 'Output File Name',
+                            hintText: 'Enter output file name',
+                            border: const OutlineInputBorder(),
+                            errorText: _fileNameController.text.isEmpty && hasVideo
+                                ? 'Please enter a file name'
+                                : null,
                           ),
-                        if (!hasTrimRange)
-                          const Text(
-                            '• Set trim range using the seekbar',
-                            style: TextStyle(color: Colors.red),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Add to queue button
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add to Queue'),
+                            onPressed: isFormValid ? widget.appState.addTrimJob : null,
                           ),
-                        if (!hasLabels)
-                          const Text(
-                            '• Select at least one output folder',
-                            style: TextStyle(color: Colors.red),
+                        ),
+                        
+                        // Form validation messages
+                        if (!hasVideo || !hasTrimRange || !hasLabels)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (!hasVideo)
+                                  const Text(
+                                    '• Select a video from the playlist',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                if (!hasTrimRange)
+                                  const Text(
+                                    '• Set trim range using the seekbar',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                if (!hasLabels)
+                                  const Text(
+                                    '• Select at least one output folder',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                              ],
+                            ),
                           ),
                       ],
                     ),
                   ),
-              ],
-            ),
-          ),
+                ),
+              ),
+            );
+          },
         );
       },
     );

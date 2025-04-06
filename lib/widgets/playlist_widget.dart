@@ -99,22 +99,50 @@ class PlaylistWidget extends StatelessWidget {
                       itemBuilder: (context, index) {
                         final video = videos[index];
                         final isSelected = currentVideo == video;
-                        final fileName = video.filePath.split('/').last;
+                        final fileName = _getFileName(video.filePath);
                         
                         return ListTile(
                           title: Text(
                             fileName,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
                             video.filePath,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.onSurface.withOpacity(0.7),
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
-                          leading: Icon(
-                            Icons.video_file,
-                            color: isSelected
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.onSurface.withOpacity(0.6),
+                          leading: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Icon(
+                                Icons.video_file,
+                                color: isSelected
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface.withOpacity(0.6),
+                                size: 32,
+                              ),
+                              if (isSelected)
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.primary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    padding: const EdgeInsets.all(2),
+                                    child: Icon(
+                                      Icons.play_arrow,
+                                      color: theme.colorScheme.onPrimary,
+                                      size: 12,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete),
@@ -133,5 +161,12 @@ class PlaylistWidget extends StatelessWidget {
         );
       },
     );
+  }
+  
+  /// Extract a clean file name from a file path
+  String _getFileName(String filePath) {
+    // Handle both forward and backward slashes
+    final parts = filePath.replaceAll('\\', '/').split('/');
+    return parts.isNotEmpty ? parts.last : filePath;
   }
 }

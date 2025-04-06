@@ -23,6 +23,7 @@ class TrimJobsWidget extends StatelessWidget {
         final trimJobs = appState.trimJobs;
         
         return Column(
+          mainAxisSize: MainAxisSize.min, // Set to min to avoid unbounded height issues
           children: [
             // Panel header
             InkWell(
@@ -52,61 +53,62 @@ class TrimJobsWidget extends StatelessWidget {
               ),
             ),
             
-            // Jobs list
+            // Jobs list with AnimatedContainer for smooth transitions
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              height: showJobsPanel ? 200 : 0,
-              child: showJobsPanel
-                  ? trimJobs.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No trim jobs. Add a job using the form above.',
-                            style: TextStyle(color: Theme.of(context).hintColor),
+              height: showJobsPanel ? 200.0 : 0.0, // Fixed height that animates between 0 and 200
+              child: showJobsPanel ? Container(
+                child: trimJobs.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No trim jobs. Add a job using the form above.',
+                        style: TextStyle(color: Theme.of(context).hintColor),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true, // Important to avoid unbounded height issues
+                      itemCount: trimJobs.length,
+                      itemBuilder: (context, index) {
+                        final job = trimJobs[index];
+                        final fileName = job.filePath.split('/').last;
+                        
+                        return ListTile(
+                          title: Text(
+                            '${job.outputFileName} (${job.audioOnly ? 'Audio Only' : 'Video'})',
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        )
-                      : ListView.builder(
-                          itemCount: trimJobs.length,
-                          itemBuilder: (context, index) {
-                            final job = trimJobs[index];
-                            final fileName = job.filePath.split('/').last;
-                            
-                            return ListTile(
-                              title: Text(
-                                '${job.outputFileName} (${job.audioOnly ? 'Audio Only' : 'Video'})',
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Source: $fileName',
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Source: $fileName',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text('Trim: ${_formatDuration(job.startDuration)} - ${_formatDuration(job.endDuration)}'),
-                                  if (job.error != null)
-                                    Text(
-                                      'Error: ${job.error}',
-                                      style: const TextStyle(color: Colors.red),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  LinearProgressIndicator(
-                                    value: job.progress >= 0 ? job.progress : 0,
-                                    backgroundColor: Colors.grey,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      job.progress == 1.0
-                                          ? Colors.green
-                                          : job.progress < 0
-                                              ? Colors.red
-                                              : Theme.of(context).colorScheme.primary,
-                                    ),
-                                  ),
-                                ],
+                              Text('Trim: ${_formatDuration(job.startDuration)} - ${_formatDuration(job.endDuration)}'),
+                              if (job.error != null)
+                                Text(
+                                  'Error: ${job.error}',
+                                  style: const TextStyle(color: Colors.red),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              LinearProgressIndicator(
+                                value: job.progress >= 0 ? job.progress : 0,
+                                backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  job.progress == 1.0
+                                      ? Colors.green
+                                      : job.progress < 0
+                                          ? Colors.red
+                                          : Theme.of(context).colorScheme.primary,
+                                ),
                               ),
-                              trailing: _buildJobStatusIcon(job),
-                            );
-                          },
-                        )
-                  : null,
+                            ],
+                          ),
+                          trailing: _buildJobStatusIcon(job),
+                        );
+                      },
+                    ),
+              ) : null,
             ),
           ],
         );
